@@ -33,8 +33,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
+from . import __version__, db
 from . import auth as auth_module
-from . import db
 from . import metrics as metrics_module
 from . import nats as nats_module
 from .config import Settings, load_settings
@@ -129,7 +129,11 @@ class ToolTelemetry(Middleware):
         return result
 
 
-mcp: FastMCP = FastMCP("iot-mcp-bridge", middleware=[ClientToolPolicy(), ToolTelemetry()])
+mcp: FastMCP = FastMCP(
+    "lares-mcp-bridge",
+    version=__version__,
+    middleware=[ClientToolPolicy(), ToolTelemetry()],
+)
 
 
 @mcp.tool()
@@ -618,7 +622,7 @@ def build_app() -> Starlette:
             metrics_module.get(), _settings.metrics_port
         )
         log.info(
-            "iot_mcp_bridge_ready",
+            "lares_mcp_bridge_ready",
             host=_settings.host,
             port=_settings.port,
             metrics_port=_settings.metrics_port,

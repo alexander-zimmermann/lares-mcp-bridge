@@ -16,8 +16,8 @@ from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
 from testcontainers.postgres import PostgresContainer
 
-from iot_mcp_bridge import metrics as metrics_module
-from iot_mcp_bridge import server
+from lares_mcp_bridge import metrics as metrics_module
+from lares_mcp_bridge import server
 
 EXPECTED_TOOLS = {
     "list_data_sources",
@@ -125,7 +125,7 @@ async def test_middleware_counts_every_tool_outcome(db_pool: None) -> None:
 
     def count(tool: str, outcome: str) -> float | None:
         return metrics_module.get().registry.get_sample_value(
-            "iot_mcp_bridge_tool_calls_total",
+            "lares_mcp_bridge_tool_calls_total",
             {"tool": tool, "sub": "anonymous", "outcome": outcome},
         )
 

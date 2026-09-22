@@ -1,1 +1,1 @@
-"""Test package for iot-mcp-bridge."""
+"""Test package for lares-mcp-bridge."""

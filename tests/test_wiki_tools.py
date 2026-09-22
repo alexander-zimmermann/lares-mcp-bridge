@@ -17,8 +17,8 @@ import pytest
 import pytest_asyncio
 import respx
 
-from iot_mcp_bridge.config import Settings
-from iot_mcp_bridge.tools import wiki
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import wiki
 
 WIKI_URL = "http://wiki-js.wiki-js.svc"
 TOKEN = "eyJhbGciOiJSUzI1NiJ9.test.token"

@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from iot_mcp_bridge import db
-from iot_mcp_bridge.config import Settings
-from iot_mcp_bridge.tools import timeseries as ts
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import timeseries as ts
 
 pytestmark = pytest.mark.asyncio
 

@@ -9,8 +9,8 @@ import psycopg
 import pytest_asyncio
 from psycopg.rows import DictRow, dict_row
 
-from iot_mcp_bridge.config import Settings
-from iot_mcp_bridge.tools import forecasts
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import forecasts
 
 
 @pytest_asyncio.fixture

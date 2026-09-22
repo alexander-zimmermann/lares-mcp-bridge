@@ -9,9 +9,9 @@ import structlog
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from iot_mcp_bridge import metrics as metrics_module
-from iot_mcp_bridge import server
-from iot_mcp_bridge.config import Settings
+from lares_mcp_bridge import metrics as metrics_module
+from lares_mcp_bridge import server
+from lares_mcp_bridge.config import Settings
 
 ALLOWLIST = {"lares-agent": ["list_episodes", "query_*"]}
 
@@ -67,7 +67,7 @@ async def test_machine_client_without_entry_sees_nothing(
 async def test_user_client_without_entry_keeps_every_tool(
     policy_settings: Settings, clean_context: None
 ) -> None:
-    visible = await _visible_tools(client_id="iot-mcp-bridge", client_kind="user")
+    visible = await _visible_tools(client_id="lares-mcp-bridge", client_kind="user")
     assert "set_episode_verdict" in visible
     assert "list_episodes" in visible
 
@@ -88,7 +88,7 @@ async def test_denied_call_is_refused_and_counted(
         with pytest.raises(ToolError, match="tool_not_allowed: set_episode_verdict"):
             await client.call_tool("set_episode_verdict", {"episode_id": 1, "verdict": "real"})
     denied = metrics_module.get().registry.get_sample_value(
-        "iot_mcp_bridge_tool_calls_total",
+        "lares_mcp_bridge_tool_calls_total",
         {"tool": "set_episode_verdict", "sub": "lares-agent", "outcome": "denied"},
     )
     assert denied == 1
