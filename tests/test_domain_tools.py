@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from iot_mcp_bridge.tools import domain as domain_tools
+from lares_mcp_bridge.tools import domain as domain_tools
 
 # Use a generous future-window to ensure no rows match for "empty range" tests.
 _FAR_FUTURE = "2099-01-01T00:00:00Z"

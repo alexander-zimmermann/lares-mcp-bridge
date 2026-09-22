@@ -9,9 +9,9 @@ import psycopg
 import pytest
 import pytest_asyncio
 
-from iot_mcp_bridge import db
-from iot_mcp_bridge.config import Settings
-from iot_mcp_bridge.tools import episodes
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import episodes
 
 
 @pytest_asyncio.fixture

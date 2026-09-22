@@ -20,13 +20,13 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from iot_mcp_bridge import auth as auth_module
-from iot_mcp_bridge.auth import AuthError, AuthMiddleware, Principal, verify_token
-from iot_mcp_bridge.config import Settings
+from lares_mcp_bridge import auth as auth_module
+from lares_mcp_bridge.auth import AuthError, AuthMiddleware, Principal, verify_token
+from lares_mcp_bridge.config import Settings
 
 JWKS_URL = "https://issuer.test/jwks"
 ISSUER = "https://issuer.test/"
-AUDIENCE = "iot-mcp-bridge"
+AUDIENCE = "lares-mcp-bridge"
 RESOURCE_URL = "https://mcp.test/mcp"
 
 
@@ -177,11 +177,11 @@ async def test_missing_token_raises(configured: Settings) -> None:
 
 @pytest.mark.asyncio
 async def test_valid_token_returns_principal(configured: Settings, keypair: RSAPrivateKey) -> None:
-    token = _sign(keypair, "key1", _claims(sub="alex", azp="iot-mcp-bridge"))
+    token = _sign(keypair, "key1", _claims(sub="alex", azp="lares-mcp-bridge"))
     principal = await verify_token(token, configured)
     assert isinstance(principal, Principal)
     assert principal.sub == "alex"
-    assert principal.client_id == "iot-mcp-bridge"
+    assert principal.client_id == "lares-mcp-bridge"
     assert principal.claims["iss"] == ISSUER
 
 
@@ -354,7 +354,7 @@ async def test_middleware_401_without_token(configured: Settings) -> None:
         r = await c.get("/mcp")
     assert r.status_code == 401
     challenge = r.headers["www-authenticate"]
-    assert 'realm="iot-mcp-bridge"' in challenge
+    assert 'realm="lares-mcp-bridge"' in challenge
     assert 'error="invalid_token"' in challenge
     assert "resource_metadata=" in challenge
 

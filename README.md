@@ -1,14 +1,16 @@
-# iot-mcp-bridge
+# lares-mcp-bridge
+
+_Formerly `iot-mcp-bridge`._
 
 A near read-only [Model Context Protocol](https://modelcontextprotocol.io) server that lets a large language model — Claude.ai, a local Ollama instance, or any other MCP-aware client — answer questions about an **IoT-enabled home**: heating, photovoltaics, EV charging, KNX bus events, room climate.
 
-Instead of giving the LLM raw SQL access (brittle, hard to bound, no audit), `iot-mcp-bridge` exposes a small set of well-shaped tools backed by **TimescaleDB hypertables** plus their **continuous aggregates**. The LLM picks a tool, the server runs a parametrised query against a long-term timeseries store, and the result comes back already aggregated and capped to a token-friendly size.
+Instead of giving the LLM raw SQL access (brittle, hard to bound, no audit), `lares-mcp-bridge` exposes a small set of well-shaped tools backed by **TimescaleDB hypertables** plus their **continuous aggregates**. The LLM picks a tool, the server runs a parametrised query against a long-term timeseries store, and the result comes back already aggregated and capped to a token-friendly size.
 
 ## Why
 
 Modern homes generate a lot of telemetry — KNX writes, smart-meter readings, heat-pump flow temperatures, wallbox sessions, inverter data — and most of it lands in some database that nobody ever queries. Pointing an LLM at the database directly works for prototypes but breaks down quickly: the model invents column names, returns 50,000 rows, can't tell hypertables apart from rollups, and there is no policy on what it's allowed to read.
 
-`iot-mcp-bridge` is the small, opinionated middle layer:
+`lares-mcp-bridge` is the small, opinionated middle layer:
 
 - **Discoverable** — the LLM can list data sources and inspect schemas, including a sample of JSONB keys for raw payloads.
 - **Aggregation-aware** — when a query asks for hourly buckets or coarser, the server transparently routes to a TimescaleDB continuous aggregate, returning fewer rows and faster responses.
@@ -81,7 +83,7 @@ approval-gated control.
 
 ## Standalone usage
 
-`iot-mcp-bridge` does not depend on any specific cluster, ingress, or auth setup. You can run it against any TimescaleDB instance you already have.
+`lares-mcp-bridge` does not depend on any specific cluster, ingress, or auth setup. You can run it against any TimescaleDB instance you already have.
 
 ### Prerequisites
 
@@ -93,8 +95,8 @@ approval-gated control.
 ### Run it
 
 ```bash
-git clone https://github.com/alexander-zimmermann/iot-mcp-bridge.git
-cd iot-mcp-bridge
+git clone https://github.com/alexander-zimmermann/lares-mcp-bridge.git
+cd lares-mcp-bridge
 uv sync
 
 export MCP_DB_HOST=localhost
@@ -105,7 +107,7 @@ export MCP_DB_PASSWORD=secret
 # The live tools default to an in-cluster NATS URL — disable them standalone:
 export MCP_NATS_ENABLED=false
 
-uv run iot-mcp-bridge
+uv run lares-mcp-bridge
 # server listening on http://0.0.0.0:8080/mcp
 ```
 
@@ -178,7 +180,7 @@ docker run --rm -p 8080:8080 \
   -e MCP_DB_USERNAME=mcp_readonly \
   -e MCP_DB_PASSWORD=secret \
   -e MCP_NATS_ENABLED=false \
-  ghcr.io/alexander-zimmermann/iot-mcp-bridge:latest
+  ghcr.io/alexander-zimmermann/lares-mcp-bridge:latest
 ```
 
 ## GA catalog

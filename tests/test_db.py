@@ -6,8 +6,8 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from iot_mcp_bridge import db
-from iot_mcp_bridge.config import Settings
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
 
 _KNX_NEWEST_FIRST = "SELECT time, ga, value FROM knx ORDER BY time DESC"
 

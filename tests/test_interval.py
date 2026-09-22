@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from iot_mcp_bridge.interval import Interval
+from lares_mcp_bridge.interval import Interval
 
 
 @pytest.mark.parametrize(

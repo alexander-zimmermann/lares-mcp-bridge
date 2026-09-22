@@ -33,4 +33,4 @@ WORKDIR /app
 
 EXPOSE 8080
 
-ENTRYPOINT ["iot-mcp-bridge"]
+ENTRYPOINT ["lares-mcp-bridge"]

@@ -11,9 +11,9 @@ import pytest
 import pytest_asyncio
 from testcontainers.postgres import PostgresContainer
 
-from iot_mcp_bridge import db
-from iot_mcp_bridge.config import Settings
-from iot_mcp_bridge.tools import sources
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import sources
 
 
 @pytest.fixture(autouse=True)

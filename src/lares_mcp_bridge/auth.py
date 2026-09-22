@@ -248,7 +248,7 @@ def _resource_metadata_url(settings: Settings) -> str | None:
 
 def _www_authenticate(reason: str, settings: Settings) -> str:
     challenge = (
-        f'Bearer realm="iot-mcp-bridge", error="invalid_token", error_description="{reason}"'
+        f'Bearer realm="lares-mcp-bridge", error="invalid_token", error_description="{reason}"'
     )
     metadata_url = _resource_metadata_url(settings)
     if metadata_url:

@@ -22,43 +22,43 @@ class Metrics:
         self.registry = registry if registry is not None else CollectorRegistry()
 
         self.tool_calls = Counter(
-            "iot_mcp_bridge_tool_calls_total",
+            "lares_mcp_bridge_tool_calls_total",
             "MCP tool invocations partitioned by tool, OIDC subject, and outcome.",
             ["tool", "sub", "outcome"],
             registry=self.registry,
         )
         self.db_queries = Counter(
-            "iot_mcp_bridge_db_queries_total",
+            "lares_mcp_bridge_db_queries_total",
             "Database queries issued by the MCP tools.",
             ["tool", "table_used"],
             registry=self.registry,
         )
         self.db_query_duration = Histogram(
-            "iot_mcp_bridge_db_query_duration_seconds",
+            "lares_mcp_bridge_db_query_duration_seconds",
             "Wall-clock duration of database queries.",
             ["tool"],
             registry=self.registry,
         )
         self.jwks_refresh = Counter(
-            "iot_mcp_bridge_jwks_refresh_total",
+            "lares_mcp_bridge_jwks_refresh_total",
             "JWKS cache refreshes partitioned by result (ok|error).",
             ["result"],
             registry=self.registry,
         )
         self.nats_fetches = Counter(
-            "iot_mcp_bridge_nats_fetches_total",
+            "lares_mcp_bridge_nats_fetches_total",
             "Live-state JetStream reads partitioned by domain and result (ok|miss|error).",
             ["domain", "result"],
             registry=self.registry,
         )
         self.nats_state_age = Histogram(
-            "iot_mcp_bridge_nats_state_age_seconds",
+            "lares_mcp_bridge_nats_state_age_seconds",
             "Freshness of the live state returned to the caller, by domain.",
             ["domain"],
             registry=self.registry,
         )
         self.nats_subscribe_messages = Counter(
-            "iot_mcp_bridge_nats_subscribe_messages_total",
+            "lares_mcp_bridge_nats_subscribe_messages_total",
             "Messages collected by subscribe_nats, partitioned by subject prefix.",
             ["prefix"],
             registry=self.registry,

@@ -1,6 +1,6 @@
 """Integration tests for the NATS JetStream layer against a real nats-server.
 
-Unlike test_live_tools.py (which mocks ``iot_mcp_bridge.nats``), these exercise
+Unlike test_live_tools.py (which mocks ``lares_mcp_bridge.nats``), these exercise
 the actual nats-py API usage — ``get_last_msg`` parsing and the core-subscribe
 tail — against a throwaway ``nats:2.10`` container with JetStream enabled.
 Skipped automatically when Docker is unavailable.
@@ -18,8 +18,8 @@ import pytest_asyncio
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_for_logs
 
-from iot_mcp_bridge import nats as nats_module
-from iot_mcp_bridge.config import Settings
+from lares_mcp_bridge import nats as nats_module
+from lares_mcp_bridge.config import Settings
 
 
 @pytest.fixture(scope="module")

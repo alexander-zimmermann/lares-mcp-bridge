@@ -11,7 +11,7 @@ def main() -> None:
     """Load settings and serve ``build_app()`` (factory keeps import side-effect free)."""
     settings = load_settings()
     uvicorn.run(
-        "iot_mcp_bridge.server:build_app",
+        "lares_mcp_bridge.server:build_app",
         factory=True,
         host=settings.host,
         port=settings.port,

@@ -1,6 +1,6 @@
 """Live-tool tests.
 
-The JetStream layer (``iot_mcp_bridge.nats``) is monkeypatched — these are unit
+The JetStream layer (``lares_mcp_bridge.nats``) is monkeypatched — these are unit
 tests of the domain→subject mapping, field extraction, freshness logic and the
 subscribe allowlist. The unknown path hits the real seeded TimescaleDB via the
 ``db_pool`` fixture to exercise the ``last_known_in_tsdb`` fallback.
@@ -15,9 +15,9 @@ from typing import Any
 
 import pytest
 
-from iot_mcp_bridge import nats as nats_module
-from iot_mcp_bridge.nats import StateMsg
-from iot_mcp_bridge.tools import live
+from lares_mcp_bridge import nats as nats_module
+from lares_mcp_bridge.nats import StateMsg
+from lares_mcp_bridge.tools import live
 
 # The thresholds the server reads from settings; fixed here so the tests need no DB.
 _STALE_AFTER = 600
