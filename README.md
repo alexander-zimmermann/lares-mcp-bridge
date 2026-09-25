@@ -43,13 +43,13 @@ behind high-level questions:
 | `query_unifi_events(from_ts, to_ts, camera, …)`       | Recent UniFi Protect Alarm Manager events (person/vehicle/motion detections per camera) for security review.                                                                          |
 | `correlate_events(source_a, source_b, …)`             | Lagged Pearson correlation between two time-series streams. Each `source` is `{table, column}`; returns the best lag plus the top 10 by `\|corr\|`.                                   |
 
-**Forecasts** (read-only views into the forecast table populated by [iot-insights-engine](https://github.com/alexander-zimmermann/iot-insights-engine) batch jobs)
+**Forecasts** (read-only views into the forecast table populated by [lares-diagnostics-engine](https://github.com/alexander-zimmermann/lares-diagnostics-engine) batch jobs)
 
 | Tool                                            | What it does                                                                                       |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `get_forecast(metric, horizon_hours, model)`    | Stored model forecasts (PV via Forecast.Solar, seasonal via statsforecast).                        |
 
-**Verdicts** (the review loop over the situations [iot-insights-engine](https://github.com/alexander-zimmermann/iot-insights-engine) recorded)
+**Verdicts** (the review loop over the situations [lares-diagnostics-engine](https://github.com/alexander-zimmermann/lares-diagnostics-engine) recorded)
 
 | Tool                                              | What it does                                                                                                                                 |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
