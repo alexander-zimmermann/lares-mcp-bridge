@@ -28,7 +28,7 @@ behind high-level questions:
 
 | Tool                                                                             | What it does                                                                                                                                                                            |
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_data_sources()`                                                            | Enumerates all hypertables and continuous aggregates in the connected database, with their time range.                                                                                  |
+| `list_data_sources()`                                                            | Enumerates all hypertables and continuous aggregates in the connected database, with their time range, under `sources`.                                                                                  |
 | `get_schema(table)`                                                              | Returns columns, types, and — for tables with a `JSONB` payload column — a sample of the most common JSON keys, so the LLM can construct sensible expressions like `raw->>'flow_temp'`. |
 | `query_timeseries(table, columns, from_ts, to_ts, aggregation, bucket, filters)` | Bucketed aggregate query (`avg`, `sum`, `min`, `max`, `count`). Automatically uses a `*_1h` continuous aggregate when the bucket is one hour or coarser and an aggregate exists.        |
 
@@ -130,6 +130,15 @@ tools read listings, never an object. They speak plain S3 (`ListBuckets`,
 `ListObjectsV2`), so a change of the service behind the endpoint leaves them
 as they are. S3 lists by key, not by time, so finding the newest object means
 listing all of it; both tools page through the whole listing.
+
+A tool that rejects its arguments — an unknown table, column or room, an
+invalid bucket, a result over the row cap — answers with an ordinary result,
+`{"refused": "<reason>"}`, naming what would have been valid. It is never an
+MCP error: a harness counts error results as strikes against the server and
+pauses it after a few, so one batch of guessed column names would blind every
+run for a minute. Only the bridge's own failures — the database, NATS, a
+timeout — are errors. The outcome metric counts `ok`, `refused` and `error`
+apart.
 
 Later phases (tracked separately) add optimization advisors and
 approval-gated control.

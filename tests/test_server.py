@@ -8,7 +8,9 @@ instrumentation run for real.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastmcp import Client
@@ -18,6 +20,7 @@ from testcontainers.postgres import PostgresContainer
 
 from lares_mcp_bridge import metrics as metrics_module
 from lares_mcp_bridge import server
+from lares_mcp_bridge.tools import sources as sources_tools
 
 EXPECTED_TOOLS = {
     "list_data_sources",
@@ -114,7 +117,7 @@ async def test_tool_call_roundtrip(db_pool: None) -> None:
     """list_data_sources through the MCP layer returns the seeded hypertables."""
     async with Client(server.mcp) as client:
         result = await client.call_tool("list_data_sources", {})
-    names = {entry["name"] for entry in result.data}
+    names = {entry["name"] for entry in result.data["sources"]}
     assert {"knx", "ems_esp"} <= names
 
 
@@ -141,8 +144,8 @@ async def test_episode_bundle_and_ledger_survive_the_mcp_layer(clean_verdicts: N
         )
         assert judged.data["verdict"] == "helpful"
 
-        with pytest.raises(ToolError, match="unknown_episode"):
-            await client.call_tool("get_episode", {"episode_id": 999999})
+        refused = await client.call_tool("get_episode", {"episode_id": 999999})
+        assert json.loads(refused.content[0].text)["refused"].startswith("unknown_episode")
 
 
 async def test_literal_parameters_reach_the_client_as_enums() -> None:
@@ -159,13 +162,22 @@ async def test_literal_parameters_reach_the_client_as_enums() -> None:
     assert verdict["enum"] == ["real", "nonsense", "helpful", "useless"]
 
 
-async def test_middleware_counts_every_tool_outcome(db_pool: None) -> None:
-    """One middleware, not one wrapper per tool, records ok and error per tool and subject."""
+async def test_middleware_counts_every_tool_outcome(
+    db_pool: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One middleware, not one wrapper per tool, records ok, refused and error per tool."""
     metrics_module.reset()
+
+    async def database_gone() -> list[dict[str, Any]]:
+        raise RuntimeError("database gone")
+
     async with Client(server.mcp) as client:
         await client.call_tool("list_data_sources", {})
-        with pytest.raises(ToolError, match="unknown_table"):
-            await client.call_tool("get_schema", {"table": "does_not_exist"})
+        refused = await client.call_tool("get_schema", {"table": "does_not_exist"})
+        assert json.loads(refused.content[0].text) == {"refused": "unknown_table: does_not_exist"}
+        monkeypatch.setattr(sources_tools, "list_data_sources", database_gone)
+        with pytest.raises(ToolError):
+            await client.call_tool("list_data_sources", {})
 
     def count(tool: str, outcome: str) -> float | None:
         return metrics_module.get().registry.get_sample_value(
@@ -174,6 +186,42 @@ async def test_middleware_counts_every_tool_outcome(db_pool: None) -> None:
         )
 
     assert count("list_data_sources", "ok") == 1
-    assert count("list_data_sources", "error") is None
-    assert count("get_schema", "error") == 1
+    assert count("list_data_sources", "error") == 1
+    assert count("get_schema", "refused") == 1
+    assert count("get_schema", "error") is None
     assert count("get_schema", "ok") is None
+
+
+async def test_every_tool_answers_with_an_object() -> None:
+    """A refusal is an object; every tool's output schema has to admit it.
+
+    A tool returning a list gets a wrapped schema the client validates, and
+    a refusal could not pass it.
+    """
+    async with Client(server.mcp) as client:
+        tools = await client.list_tools()
+    assert tools
+    for tool in tools:
+        schema = tool.output_schema or {}
+        assert schema.get("type") == "object", tool.name
+        assert "x-fastmcp-wrap-result" not in schema, tool.name
+
+
+async def test_refusal_travels_as_a_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ValueError is the tool working as designed: the client gets ``refused``, no MCP error.
+
+    An error result is a breaker strike for the harness; three guessed column
+    names in one batch would pause the whole server for a minute.
+    """
+    metrics_module.reset()
+
+    async def refuse(table: str) -> dict[str, Any]:
+        raise ValueError("unknown_columns: ['x']; valid: ['time', 'value']")
+
+    monkeypatch.setattr(sources_tools, "get_schema", refuse)
+    async with Client(server.mcp) as client:
+        result = await client.call_tool("get_schema", {"table": "knx"})
+    assert result.is_error is False
+    refusal = {"refused": "unknown_columns: ['x']; valid: ['time', 'value']"}
+    assert json.loads(result.content[0].text) == refusal
+    assert result.data == refusal

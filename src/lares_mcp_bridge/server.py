@@ -9,6 +9,9 @@ by clients.
 Each tool here is its LLM-facing docstring plus the call into ``tools/*``;
 logging and the per-tool outcome metric are one middleware, not one wrapper
 per tool, and the per-client tool allowlist is another one in front of it.
+A tool refuses bad arguments with ``ValueError``; the outcome middleware
+hands that back as a result, ``{"refused": "<reason>"}``, never as an MCP
+error — see :class:`ToolTelemetry` for why.
 
 The app is exposed via :func:`build_app` (uvicorn factory) so importing this
 module has no side effects — settings are only loaded when the app is built.
@@ -17,6 +20,7 @@ module has no side effects — settings are only loaded when the app is built.
 from __future__ import annotations
 
 import fnmatch
+import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
@@ -121,7 +125,19 @@ class ClientToolPolicy(Middleware):
 
 
 class ToolTelemetry(Middleware):
-    """Log every tool call and count its outcome per tool and OIDC subject."""
+    """Log every tool call, count its outcome, and hand a refusal back as a result.
+
+    Three outcomes: ``ok``, ``refused`` and ``error``. A refusal is the tool
+    rejecting its arguments with ``ValueError`` — an unknown table, column or
+    room, an invalid bucket, a result over the row cap — and naming what
+    would have been valid. It is the tool working as designed, so it travels
+    as an ordinary result, ``{"refused": "<reason>"}``, not as an MCP error:
+    a harness counts error results as strikes against the server, and three
+    guessed column names in one batch paused the whole server for a minute
+    (Hermes, threshold 3, cooldown 60 s, 2026-10-10). The bridge's own
+    failures — the database, NATS, a timeout — stay errors, which is what a
+    breaker is for.
+    """
 
     async def on_call_tool(
         self,
@@ -132,6 +148,18 @@ class ToolTelemetry(Middleware):
         log.info("tool_invoked", tool=tool, arguments=context.message.arguments)
         try:
             result = await call_next(context)
+        except ToolError as exc:
+            # FastMCP wraps whatever a tool raised: the refusal is the cause.
+            cause = exc.__cause__
+            if not isinstance(cause, ValueError):
+                _record_tool_call(tool, "error")
+                raise
+            _record_tool_call(tool, "refused")
+            log.info("tool_refused", tool=tool, reason=str(cause))
+            refusal = {"refused": str(cause)}
+            # Every tool answers with an object (a test holds the line), so
+            # the refusal satisfies every tool's output schema as well.
+            return ToolResult(content=json.dumps(refusal), structured_content=refusal)
         except Exception:
             _record_tool_call(tool, "error")
             raise
@@ -147,15 +175,16 @@ mcp: FastMCP = FastMCP(
 
 
 @mcp.tool()
-async def list_data_sources() -> list[dict[str, Any]]:
+async def list_data_sources() -> dict[str, Any]:
     """List hypertables and continuous aggregates with their time range.
 
     Use this first to discover what data is available before calling
-    ``get_schema`` or ``query_timeseries``. ``time_range.min`` is where the
-    stored data starts, to the day for KNX; ``time_range.max`` is the newest
-    value.
+    ``get_schema`` or ``query_timeseries``. ``sources`` holds one entry per
+    table; ``time_range.min`` is where the stored data starts, to the day for
+    KNX; ``time_range.max`` is the newest value.
     """
-    return await sources_tools.list_data_sources()
+    # An object like every other tool, so a refusal fits every tool's schema.
+    return {"sources": await sources_tools.list_data_sources()}
 
 
 @mcp.tool()
