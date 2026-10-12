@@ -10,13 +10,13 @@ aggregate's newest bucket, so each has been silent six times its usual pause.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
 from fastmcp import Client
-from fastmcp.exceptions import ToolError
 from testcontainers.postgres import PostgresContainer
 
 from lares_mcp_bridge import server
@@ -157,5 +157,6 @@ async def test_what_cannot_be_measured_is_refused_in_the_engines_words(
     db_pool: None, candidate: dict[str, Any], weeks: int, reason: str
 ) -> None:
     async with Client(server.mcp) as client:
-        with pytest.raises(ToolError, match=f"backtest_refused: .*{reason}"):
-            await client.call_tool("backtest_fault", {"candidate": candidate, "weeks": weeks})
+        result = await client.call_tool("backtest_fault", {"candidate": candidate, "weeks": weeks})
+    # A refusal is a result, not an error: the harness must not count it as a strike.
+    assert re.search(f"backtest_refused: .*{reason}", result.data["refused"])

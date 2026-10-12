@@ -29,7 +29,7 @@ def _validate_filters(
         return {}
     bad = [k for k in filters if k not in valid_columns]
     if bad:
-        raise ValueError(f"unknown_filter_columns: {bad}")
+        raise ValueError(f"unknown_filter_columns: {bad}; valid: {sorted(valid_columns)}")
     return filters
 
 
@@ -60,7 +60,7 @@ async def query_timeseries(
     valid_cols = {c["name"] for c in schema["columns"]}
     unknown = [c for c in columns if c not in valid_cols]
     if unknown:
-        raise ValueError(f"unknown_columns: {unknown}")
+        raise ValueError(f"unknown_columns: {unknown}; valid: {sorted(valid_cols)}")
     flt = _validate_filters(filters, valid_cols)
 
     select_parts: list[sql.Composable] = [

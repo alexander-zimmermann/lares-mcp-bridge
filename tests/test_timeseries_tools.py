@@ -60,7 +60,7 @@ async def test_query_unknown_table_rejected(db_pool: None) -> None:
 
 async def test_query_unknown_column_rejected(db_pool: None) -> None:
     from_ts, to_ts = _now_window()
-    with pytest.raises(ValueError, match="unknown_columns"):
+    with pytest.raises(ValueError, match=r"unknown_columns: \['does_not_exist'\]; valid: \["):
         await ts.query_timeseries(
             table="knx",
             columns=["does_not_exist"],
