@@ -77,8 +77,8 @@ async def test_a_refused_line_carries_the_triggers_reason(
     )
 
     async with Client(server.mcp) as client:
-        with pytest.raises(ToolError, match=f"memory_not_appended: {reason}"):
-            await client.call_tool("append_memory", {"use_case": "x", "line": "a line"})
+        result = await client.call_tool("append_memory", {"use_case": "x", "line": "a line"})
+    assert result.data == {"refused": f"memory_not_appended: {reason}"}
 
 
 async def test_a_trigger_that_does_not_answer_is_named(
@@ -98,8 +98,8 @@ async def test_a_line_break_is_refused_before_the_trigger_is_asked(
     route = trigger_router.post("/api/memory")
 
     async with Client(server.mcp) as client:
-        with pytest.raises(ToolError, match="invalid_line"):
-            await client.call_tool(
-                "append_memory", {"use_case": "propose-faults", "line": "rejected\nbecause"}
-            )
+        result = await client.call_tool(
+            "append_memory", {"use_case": "propose-faults", "line": "rejected\nbecause"}
+        )
+    assert result.data["refused"].startswith("invalid_line")
     assert not route.called
