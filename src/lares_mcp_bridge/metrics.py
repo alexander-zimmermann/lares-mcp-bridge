@@ -39,6 +39,11 @@ class Metrics:
             ["tool"],
             registry=self.registry,
         )
+        self.unknown_tokens = Counter(
+            "lares_mcp_bridge_unknown_tokens_total",
+            "Accepted bearer tokens whose preferred_username names no person in MCP_AUTH_PERSONS.",
+            registry=self.registry,
+        )
         self.jwks_refresh = Counter(
             "lares_mcp_bridge_jwks_refresh_total",
             "JWKS cache refreshes partitioned by result (ok|error).",

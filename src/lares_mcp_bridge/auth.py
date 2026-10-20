@@ -7,10 +7,15 @@ of the static API keys of ``MCP_AUTH_CLIENTS_FILE``, the path for machine
 clients (agents) that cannot run an OAuth flow. A key matches before any JWT
 parsing, so a key is never mistaken for a malformed token.
 
+Either way the caller may be a person: a machine client named by a handle in
+``MCP_AUTH_PERSONS``, or a token whose ``preferred_username`` is one. A token
+whose username names no person is let in without one, and counted.
+
 The transport hook is ``AuthMiddleware`` (pure ASGI). On success it binds
-``sub``, ``client_id`` and ``client_kind`` (``user`` or ``machine``) to
-structlog's contextvars so every log line emitted while handling the
-request carries the caller identity, and the tool policy can read it.
+``sub``, ``client_id``, ``client_kind`` (``user`` or ``machine``) and, for a
+person, ``enduser.id`` to structlog's contextvars so every log line emitted
+while handling the request carries the caller identity, and the tool policy
+and the run tools can read it.
 """
 
 from __future__ import annotations
@@ -46,6 +51,8 @@ class Principal:
     # True for a static-key client; the tool policy denies such a client
     # everything it is not explicitly allowed.
     machine: bool = False
+    # The person's handle, None for a caller who is not one.
+    enduser_id: str | None = None
 
     @property
     def kind(self) -> str:
@@ -177,7 +184,8 @@ async def verify_token(token: str | None, settings: Settings) -> Principal | Non
         raise AuthError("missing_bearer_token")
     name = match_machine_client(token, settings.auth_clients)
     if name is not None:
-        return Principal(sub=name, client_id=name, claims={}, machine=True)
+        enduser_id = name if name in settings.auth_persons else None
+        return Principal(sub=name, client_id=name, claims={}, machine=True, enduser_id=enduser_id)
     if _jwks is None:
         raise AuthError("auth_not_configured")
 
@@ -220,11 +228,18 @@ async def verify_token(token: str | None, settings: Settings) -> Principal | Non
     if not sub:
         raise AuthError("missing_sub_claim")
 
+    username = claims.get("preferred_username")
+    is_person = isinstance(username, str) and username in settings.auth_persons
+    enduser_id = username if is_person else None
+    if enduser_id is None:
+        metrics_module.get().unknown_tokens.inc()
+
     cid = claims.get("azp") or claims.get("client_id")
     return Principal(
         sub=sub,
         client_id=str(cid) if cid is not None else None,
         claims=claims,
+        enduser_id=enduser_id,
     )
 
 
@@ -298,7 +313,8 @@ class AuthMiddleware:
     When auth is disabled or the path is public, requests pass straight
     through. Otherwise the token is validated and the resulting
     ``Principal`` is bound into structlog contextvars (``sub``,
-    ``client_id``) for the duration of the request.
+    ``client_id``, ``client_kind``, and ``enduser.id`` for a person) for the
+    duration of the request.
     """
 
     def __init__(self, app: ASGIApp, settings: Settings) -> None:
@@ -333,10 +349,12 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        enduser = {} if principal.enduser_id is None else {"enduser.id": principal.enduser_id}
         bound = structlog.contextvars.bind_contextvars(
             sub=principal.sub,
             client_id=principal.client_id,
             client_kind=principal.kind,
+            **enduser,
         )
         log.info(
             "auth_accepted",

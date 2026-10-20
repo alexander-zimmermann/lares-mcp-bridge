@@ -10,6 +10,11 @@ The list is the browsing read and deliberately leaves the output text out: a
 week of explanations would cost more tokens than the question is worth. A run
 named by its id comes back whole, because judging an output means reading it.
 
+A person reads their own runs and the machines' runs, never another
+person's: a caller with a handle sees the rows with that ``enduser_id`` and
+the rows without one, a caller without a handle only the latter. A run
+outside those rows answers as if it did not exist.
+
 This module owns the ledger's vocabulary — the subject kinds, the statuses
 and the shape of a subject key — for every other module that reads the table.
 Verdicts are written in :mod:`.verdicts`; nothing here writes.
@@ -37,14 +42,23 @@ SUBJECT_KEY_MATCH = sql.SQL("(r.subject_key = {key} OR split_part(r.subject_key,
 _RUN_COLUMNS = sql.SQL(
     """
     r.id AS run_id, r.use_case, r.trigger, r.subject_kind, r.subject_key,
-    r.session_id, r.status, r.attempt, r.error, r.tldr, r.language,
-    r.output_ref, r.output_state, r.model_source, r.model,
+    r.session_id, r.enduser_id, r.surface, r.status, r.attempt, r.error,
+    r.tldr, r.language, r.output_ref, r.output_state, r.model_source, r.model,
     r.tokens_in, r.tokens_out,
     r.cost::double precision AS cost,
+    r.review_tokens_in, r.review_tokens_out,
+    r.review_cost::double precision AS review_cost, r.review_text,
     EXTRACT(EPOCH FROM r.duration)::double precision AS duration_seconds,
     r.verdict, r.verdict_at, r.created_at, r.finished_at
     """
 )
+
+
+def visible_to(enduser_id: str | None) -> tuple[sql.Composable, tuple[str, ...]]:
+    """The rows the caller ``enduser_id`` may read, as a condition on ``r`` and its parameters."""
+    if enduser_id is None:
+        return sql.SQL("r.enduser_id IS NULL"), ()
+    return sql.SQL("(r.enduser_id = %s OR r.enduser_id IS NULL)"), (enduser_id,)
 
 
 def require_subject_kind(subject_kind: str) -> None:
@@ -56,6 +70,7 @@ def require_subject_kind(subject_kind: str) -> None:
 
 async def list_runs(
     *,
+    enduser_id: str | None,
     run_id: int | None = None,
     use_case: str | None = None,
     subject_kind: SubjectKind | None = None,
@@ -65,7 +80,7 @@ async def list_runs(
     days: int = 7,
     limit: int = 100,
 ) -> dict[str, Any]:
-    """Ledger rows from the last ``days``, newest first.
+    """Ledger rows from the last ``days`` that the caller ``enduser_id`` may read, newest first.
 
     Pass ``run_id`` to read one run back regardless of how old it is; that
     read alone carries the output ``text``.
@@ -77,8 +92,9 @@ async def list_runs(
         raise ValueError(f"invalid_status: {status!r}; must be one of {statuses}")
     days = db.window_days(days)
 
-    where_parts: list[sql.Composable] = []
-    params: list[Any] = []
+    visible, visible_params = visible_to(enduser_id)
+    where_parts: list[sql.Composable] = [visible]
+    params: list[Any] = [*visible_params]
     if run_id is not None:
         where_parts.append(sql.SQL("r.id = %s"))
         params.append(run_id)

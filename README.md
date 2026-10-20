@@ -56,8 +56,8 @@ behind high-level questions:
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_episodes(state, fault, days, …)`            | The situations the detection chain folded from repeated observations, newest first, each with the verdict it carries and the newest explanation of it. `only_unjudged=True` is what still needs judging, `only_judged=True` what a verdict count reads. |
 | `get_episode(episode_id)`                         | One episode whole: the row, its events and its last 48 observations, the catalog entry of its channel, the sibling channels of the same room that report a state or a reading (the channel's own device first, at most 50), and the newest explanation. What an explanation opens with: one call, so the bundle is consistent with itself and costs fewer tokens than the reads it replaces. |
-| `list_runs(use_case, subject_kind, status, days, …)` | The ledger: one row per run of every use case, with what it produced, what it cost and the verdict it carries. A run named by `run_id` comes back with its full output text. |
-| `set_verdict(target, verdict, …)`                 | Records `"real"`/`"nonsense"` on an episode or `"helpful"`/`"useless"` on a run; setting it again overwrites. A run is named by `run_id`, by `subject_kind` + `subject_key` (the newest run on that subject), or by nothing (the newest messenger run). Requires the write credentials below. Nothing acts on a verdict automatically — they are counted per fault and per use case on the dashboard, and thresholds stay a human decision. |
+| `list_runs(use_case, subject_kind, status, days, …)` | The ledger: one row per run of every use case, with what it produced, what it cost, the person and surface of a chat run, its background review and the verdict it carries. A caller reads their own runs and the machines', never another person's (see persons below). A run named by `run_id` comes back with its full output text. |
+| `set_verdict(target, verdict, …)`                 | Records `"real"`/`"nonsense"` on an episode or `"helpful"`/`"useless"` on a run; setting it again overwrites. A run is named by `run_id`, by `subject_kind` + `subject_key` (the newest run on that subject), or by nothing (the caller's newest chat run), and only among the runs `list_runs` shows the caller. Requires the write credentials below. Nothing acts on a verdict automatically — they are counted per fault and per use case on the dashboard, and thresholds stay a human decision. |
 
 **Back-test** (a candidate fault measured by [lares-diagnostics-engine](https://github.com/alexander-zimmermann/lares-diagnostics-engine) itself, a dependency at its deployed tag)
 
@@ -213,6 +213,7 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_AUTH_RESOURCE_URL`              | —                           | Public URL for RFC 9728 protected-resource metadata            |
 | `MCP_AUTH_CLIENTS_FILE`              | —                           | Machine clients: JSON object of client name to API key         |
 | `MCP_AUTH_CLIENT_TOOLS`              | `{}`                        | Tool allowlist per client name (JSON; names or fnmatch globs)  |
+| `MCP_AUTH_PERSONS`                   | `[]`                        | Handles of the declared persons (JSON list)                    |
 | `MCP_NATS_ENABLED`                   | `true`                      | Enable the live tools (NATS JetStream)                         |
 | `MCP_NATS_SERVERS`                   | `nats://nats.nats.svc:4222` | Comma-separated NATS server URLs                               |
 | `MCP_NATS_NKEY_SEED_FILE`            | —                           | nkey seed file for NATS auth (anonymous when unset)            |
@@ -235,11 +236,13 @@ When `MCP_AUTH_ENABLED=true`, every request must carry a valid OIDC Bearer token
 
 An agent that cannot run an OAuth flow authenticates with a static API key instead: `MCP_AUTH_CLIENTS_FILE` points at a mounted Secret holding `{"<client name>": "<key>"}` (keys of at least 32 characters), sent as `Authorization: Bearer <key>`. Such a machine client sees only the tools its entry in `MCP_AUTH_CLIENT_TOOLS` names, for example `{"lares-agent": ["list_*", "get_*", "query_*", "correlate_events", "search_wiki"]}`; a machine client without an entry sees no tools, a user without one keeps every tool. Denied calls are counted in the tool-call metric with outcome `denied`.
 
+A caller may be a person. `MCP_AUTH_PERSONS` lists the persons' handles, for example `["kim"]`: a machine client named by a handle is that person, and so is a token whose `preferred_username` claim is one. Every other caller has no person. A person reads their own rows of the ledger and the machines' rows; a caller without a person reads the machines' rows only. A token whose username names no person is let in and counted (`lares_mcp_bridge_unknown_tokens_total`). The server refuses to start when a listed handle has no key in `MCP_AUTH_CLIENTS_FILE` or no entry in `MCP_AUTH_CLIENT_TOOLS`. The person is `enduser.id` on the request's log lines.
+
 ### Operational endpoints
 
 - `GET /livez` — liveness: process is up; never depends on DB/NATS health.
 - `GET /healthz` — readiness/deep health: 503 when the database is unreachable; reports NATS connectivity when the live tools are enabled. Neither the wiki, the backup server nor the object store is part of it — their outage fails their tools, not the pod.
-- `GET :9090/metrics` — Prometheus metrics (tool calls, DB query durations, JWKS refreshes, NATS fetches).
+- `GET :9090/metrics` — Prometheus metrics (tool calls, DB query durations, JWKS refreshes, tokens that name no person, NATS fetches).
 
 ### Container image
 

@@ -98,7 +98,9 @@ async def test_a_newer_run_without_output_leaves_the_explanation_standing(
 
 async def test_list_episodes_can_narrow_to_the_unjudged_ones(clean_verdicts: None) -> None:
     episode_id = await _episode_id("silence", open_only=True)
-    await verdicts.set_verdict(target="episode", verdict="real", episode_id=episode_id)
+    await verdicts.set_verdict(
+        enduser_id=None, target="episode", verdict="real", episode_id=episode_id
+    )
 
     unjudged = await episodes.list_episodes(days=365, only_unjudged=True)
     assert episode_id not in [r["episode_id"] for r in unjudged["episodes"]]
@@ -110,8 +112,10 @@ async def test_list_episodes_can_narrow_to_the_judged_ones(clean_verdicts: None)
     nothing else, however many unjudged ones the window holds."""
     real = await _episode_id("silence", open_only=True)
     nonsense = await _episode_id("constancy")
-    await verdicts.set_verdict(target="episode", verdict="real", episode_id=real)
-    await verdicts.set_verdict(target="episode", verdict="nonsense", episode_id=nonsense)
+    await verdicts.set_verdict(enduser_id=None, target="episode", verdict="real", episode_id=real)
+    await verdicts.set_verdict(
+        enduser_id=None, target="episode", verdict="nonsense", episode_id=nonsense
+    )
 
     judged = await episodes.list_episodes(days=365, only_judged=True)
     assert {r["episode_id"]: r["verdict"] for r in judged["episodes"]} == {
@@ -130,7 +134,7 @@ async def test_one_episode_reads_back_outside_the_default_window(clean_verdicts:
     """A verdict must be readable without guessing how wide the window has to
     be — the oldest seeded episode is 40 days back, far outside the default."""
     oldest = await _episode_id("constancy")
-    await verdicts.set_verdict(target="episode", verdict="real", episode_id=oldest)
+    await verdicts.set_verdict(enduser_id=None, target="episode", verdict="real", episode_id=oldest)
 
     named = await episodes.list_episodes(episode_id=oldest)
     assert named["row_count"] == 1
@@ -237,7 +241,9 @@ async def test_siblings_are_what_a_device_reports_its_own_device_first(
 
 async def test_get_episode_carries_the_verdict_it_already_has(clean_verdicts: None) -> None:
     episode_id = await _episode_id("silence", open_only=True)
-    await verdicts.set_verdict(target="episode", verdict="nonsense", episode_id=episode_id)
+    await verdicts.set_verdict(
+        enduser_id=None, target="episode", verdict="nonsense", episode_id=episode_id
+    )
 
     bundle = await episodes.get_episode(episode_id=episode_id)
     assert bundle["episode"]["verdict"] == "nonsense"

@@ -76,6 +76,12 @@ def _record_tool_call(tool: str, outcome: str) -> None:
     metrics_module.get().tool_calls.labels(tool=tool, sub=_principal_sub(), outcome=outcome).inc()
 
 
+def _principal_enduser_id() -> str | None:
+    """The caller's handle AuthMiddleware resolved, or None for a caller without a person."""
+    enduser_id = structlog.contextvars.get_contextvars().get("enduser.id")
+    return str(enduser_id) if enduser_id else None
+
+
 def _principal_client() -> tuple[str | None, bool]:
     """The ``client_id`` AuthMiddleware bound and whether it is a machine client."""
     ctx = structlog.contextvars.get_contextvars()
@@ -535,7 +541,14 @@ async def list_runs(
     One row per run of every use case, whatever started it: an episode event,
     a schedule, a chat message or a hand. Each row carries what it produced
     (``tldr``, ``output_ref``), what it cost (``tokens_in``, ``tokens_out``,
-    ``cost``, ``duration_seconds``) and the verdict it already has.
+    ``cost``, ``duration_seconds``), what the background review after a chat
+    turn cost and said (``review_tokens_in``, ``review_tokens_out``,
+    ``review_cost``, ``review_text``) and the verdict it already has.
+
+    You see your own chat runs and the machines' runs, never another
+    person's. ``enduser_id`` names the person a chat run answered and
+    ``surface`` where it came in (``discord`` or ``web``); both are null on a
+    machine's run.
 
     * ``run_id`` — read one run back by id, whatever its age; that read alone
                    carries the full output ``text``
@@ -547,6 +560,7 @@ async def list_runs(
     * ``days`` — window in days on the run's creation
     """
     return await run_tools.list_runs(
+        enduser_id=_principal_enduser_id(),
         run_id=run_id,
         use_case=use_case,
         subject_kind=subject_kind,
@@ -578,7 +592,8 @@ async def set_verdict(
       ``"useless"``? Name the run with ``run_id`` from ``list_runs``, or with
       ``subject_kind`` and ``subject_key`` together for the newest run on that
       subject (``"episode"`` and the episode id for an explanation), or with
-      neither for the newest messenger run — the answer just given in this chat.
+      neither for your newest chat run — the answer just given in this chat.
+      Only a run ``list_runs`` shows you can be judged.
 
     Nothing acts on this automatically: verdicts are counted per fault and per
     use case on the "Vorfälle" dashboard, and thresholds stay a human decision
@@ -588,6 +603,7 @@ async def set_verdict(
     This is the owner's act. An agent never calls it.
     """
     return await verdict_tools.set_verdict(
+        enduser_id=_principal_enduser_id(),
         target=target,
         verdict=verdict,
         episode_id=episode_id,

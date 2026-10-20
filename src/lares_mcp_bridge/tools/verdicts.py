@@ -7,6 +7,9 @@ rather than on the fault, so it stays possible to see *when* a fault is
 wrong: only at night, only in summer, only while the laundry runs. On a run
 it judges the output — was the answer helpful or useless.
 
+A run is judged only where the caller may read it — their own runs and the
+machines' — so a verdict never confirms that another person's run exists.
+
 Binary by design in both cases: nobody sustains a richer scale, and for the
 only questions that matter (how often does this fault get it wrong, how often
 does this use case earn its tokens) it is enough. One verdict per subject; a
@@ -26,7 +29,7 @@ from typing import Any, Literal, get_args
 from psycopg import sql
 
 from .. import db
-from .runs import SUBJECT_KEY_MATCH, SubjectKind, require_subject_kind
+from .runs import SUBJECT_KEY_MATCH, SubjectKind, require_subject_kind, visible_to
 
 VerdictTarget = Literal["episode", "run"]
 Verdict = Literal["real", "nonsense", "helpful", "useless"]
@@ -38,10 +41,6 @@ _VERDICTS: dict[str, tuple[str, ...]] = {
     "run": ("helpful", "useless"),
 }
 
-# What "that was helpful" means when nothing else is named: the chat the
-# owner is holding at that moment.
-_MESSENGER_USE_CASE = "messenger"
-
 _RUN_IDENTITY = sql.SQL(
     "SELECT r.id AS run_id, r.use_case, r.subject_kind, r.subject_key FROM agent_runs r"
 )
@@ -49,6 +48,7 @@ _RUN_IDENTITY = sql.SQL(
 
 async def set_verdict(
     *,
+    enduser_id: str | None,
     target: VerdictTarget,
     verdict: Verdict,
     episode_id: int | None = None,
@@ -60,8 +60,9 @@ async def set_verdict(
 
     An episode is named by ``episode_id``. A run is named by ``run_id``, or
     by ``subject_kind`` and ``subject_key`` together for the newest run on
-    that subject, or by nothing at all for the newest run of the messenger —
-    the answer just given in the chat.
+    that subject, or by nothing at all for the caller's newest chat run — the
+    answer just given in the chat. Every way of naming a run finds only the
+    runs the caller ``enduser_id`` may read.
     """
     if target not in get_args(VerdictTarget):
         raise ValueError(
@@ -88,7 +89,11 @@ async def set_verdict(
             ' is addressed with subject_kind "episode" and the episode id as subject_key'
         )
     return await _judge_run(
-        verdict=verdict, run_id=run_id, subject_kind=subject_kind, subject_key=subject_key
+        enduser_id=enduser_id,
+        verdict=verdict,
+        run_id=run_id,
+        subject_kind=subject_kind,
+        subject_key=subject_key,
     )
 
 
@@ -120,6 +125,7 @@ async def _judge_episode(*, episode_id: int, verdict: str) -> dict[str, Any]:
 
 async def _judge_run(
     *,
+    enduser_id: str | None,
     verdict: str,
     run_id: int | None,
     subject_kind: SubjectKind | None,
@@ -130,7 +136,9 @@ async def _judge_run(
     The UPDATE touches nothing but those two, which is exactly the column
     grant the verdict role holds: a judgement can never rewrite what it judges.
     """
-    run = await _resolve_run(run_id=run_id, subject_kind=subject_kind, subject_key=subject_key)
+    run = await _resolve_run(
+        enduser_id=enduser_id, run_id=run_id, subject_kind=subject_kind, subject_key=subject_key
+    )
 
     written = await db.write(
         "set_verdict",
@@ -145,27 +153,32 @@ async def _judge_run(
 
 
 async def _resolve_run(
-    *, run_id: int | None, subject_kind: SubjectKind | None, subject_key: str | None
+    *,
+    enduser_id: str | None,
+    run_id: int | None,
+    subject_kind: SubjectKind | None,
+    subject_key: str | None,
 ) -> dict[str, Any]:
-    """The run that the three ways of naming one point at."""
+    """The run that the three ways of naming one point at, among those ``enduser_id`` may read."""
     if run_id is not None and (subject_kind is not None or subject_key is not None):
         raise ValueError(
             "ambiguous_run_address: name a run by run_id, or by subject_kind and subject_key,"
-            " or by nothing for the newest messenger run"
+            " or by nothing for your newest chat run"
         )
     if (subject_kind is None) != (subject_key is None):
         raise ValueError(
             "incomplete_subject_address: subject_kind and subject_key name a subject together"
         )
 
+    visible, visible_params = visible_to(enduser_id)
     if run_id is not None:
         found = await db.lookup(
             "set_verdict",
             "agent_runs",
-            sql.SQL("{identity} WHERE r.id = {run_id}").format(
-                identity=_RUN_IDENTITY, run_id=sql.Placeholder()
+            sql.SQL("{identity} WHERE r.id = {run_id} AND {visible}").format(
+                identity=_RUN_IDENTITY, run_id=sql.Placeholder(), visible=visible
             ),
-            (run_id,),
+            (run_id, *visible_params),
         )
         if not found:
             raise ValueError(f"unknown_run: {run_id}; call list_runs to find a valid id")
@@ -177,14 +190,15 @@ async def _resolve_run(
             "set_verdict",
             "agent_runs",
             sql.SQL(
-                "{identity} WHERE r.subject_kind = {kind} AND {key_match}"
+                "{identity} WHERE r.subject_kind = {kind} AND {key_match} AND {visible}"
                 " ORDER BY r.created_at DESC LIMIT 1"
             ).format(
                 identity=_RUN_IDENTITY,
                 kind=sql.Placeholder(),
                 key_match=SUBJECT_KEY_MATCH.format(key=sql.Placeholder()),
+                visible=visible,
             ),
-            (subject_kind, subject_key, subject_key),
+            (subject_kind, subject_key, subject_key, *visible_params),
         )
         if not found:
             raise ValueError(
@@ -193,17 +207,19 @@ async def _resolve_run(
             )
         return found[0]
 
+    # The caller's own chat: their rows, or the rows without a person when they have none.
     found = await db.lookup(
         "set_verdict",
         "agent_runs",
         sql.SQL(
-            "{identity} WHERE r.use_case = {use_case} ORDER BY r.created_at DESC LIMIT 1"
-        ).format(identity=_RUN_IDENTITY, use_case=sql.Placeholder()),
-        (_MESSENGER_USE_CASE,),
+            "{identity} WHERE r.subject_kind = 'chat' AND r.enduser_id IS NOT DISTINCT FROM {who}"
+            " ORDER BY r.created_at DESC LIMIT 1"
+        ).format(identity=_RUN_IDENTITY, who=sql.Placeholder()),
+        (enduser_id,),
     )
     if not found:
         raise ValueError(
-            f"no_run_on_subject: {_MESSENGER_USE_CASE}; there is no run to judge yet —"
+            "no_run_on_subject: chat; there is no chat run of yours to judge yet —"
             " name a run_id or a subject instead"
         )
     return found[0]

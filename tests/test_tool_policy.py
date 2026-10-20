@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 import pytest
 import structlog
 from fastmcp import Client
@@ -33,15 +31,6 @@ def policy_settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
     )
     monkeypatch.setattr(server, "_settings", settings)
     return settings
-
-
-@pytest.fixture
-async def clean_context() -> AsyncIterator[None]:
-    structlog.contextvars.clear_contextvars()
-    try:
-        yield
-    finally:
-        structlog.contextvars.clear_contextvars()
 
 
 async def _visible_tools(**identity: str) -> set[str]:

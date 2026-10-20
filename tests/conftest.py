@@ -11,6 +11,7 @@ import psycopg
 import pytest
 import pytest_asyncio
 import respx
+import structlog
 from testcontainers.postgres import PostgresContainer
 
 from lares_mcp_bridge import db
@@ -18,6 +19,16 @@ from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import sources, trigger
 
 from .support import TRIGGER_KEY, TRIGGER_URL, connect
+
+
+@pytest.fixture
+def clean_context() -> Iterator[None]:
+    """No caller bound before the test, none left behind after it."""
+    structlog.contextvars.clear_contextvars()
+    try:
+        yield
+    finally:
+        structlog.contextvars.clear_contextvars()
 
 
 @pytest.fixture(autouse=True)
@@ -565,7 +576,10 @@ LEFT JOIN episode_verdicts v ON v.episode_id = r.id;
                 CHECK (subject_kind IN ('episode', 'alert_group', 'chat', 'none')),
             subject_key    TEXT,
             session_id     TEXT,
+            enduser_id     TEXT,
+            surface        TEXT           CHECK (surface IN ('discord', 'web')),
             harness_run_id TEXT,
+            trace_id       TEXT,
             status         TEXT           NOT NULL
                 CHECK (status IN ('queued', 'running', 'completed', 'failed', 'capped')),
             attempt        SMALLINT       NOT NULL DEFAULT 1,
@@ -580,6 +594,10 @@ LEFT JOIN episode_verdicts v ON v.episode_id = r.id;
             tokens_in      INTEGER,
             tokens_out     INTEGER,
             cost           NUMERIC(10, 6),
+            review_tokens_in  INTEGER,
+            review_tokens_out INTEGER,
+            review_cost       NUMERIC(10, 6),
+            review_text       TEXT,
             duration       INTERVAL,
             tool_trace     JSONB,
             verdict        TEXT           CHECK (verdict IN ('helpful', 'useless')),
@@ -597,6 +615,18 @@ LEFT JOIN episode_verdicts v ON v.episode_id = r.id;
         """
         CREATE UNIQUE INDEX agent_runs_subject_idx
             ON agent_runs (use_case, subject_kind, subject_key)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX agent_runs_use_case_created_at_idx
+            ON agent_runs (use_case, created_at DESC)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX agent_runs_enduser_id_created_at_idx
+            ON agent_runs (enduser_id, created_at DESC)
         """
     )
 
@@ -630,8 +660,8 @@ ORDER BY episode_id, r.created_at DESC;
 
     # Ledger seed — two explanations of the open episode (one per event
     # kind, which is what makes the subject key carry the kind), two
-    # messenger turns so "the newest" has something to beat, and one failed
-    # scheduled run outside the default window.
+    # messenger turns without a person, one failed scheduled run outside the
+    # default window, and Kim's and Lou's turns, Kim's older than both others.
     conn.execute(
         """
         INSERT INTO agent_runs (use_case, trigger, subject_kind, subject_key, session_id,
@@ -675,6 +705,30 @@ ORDER BY episode_id, r.created_at DESC;
              'failed', 'model source unreachable', NULL, NULL, 'en', 'codex', 'gpt-5.5',
              NULL, NULL, NULL, NULL,
              NOW() - INTERVAL '10 days', NOW() - INTERVAL '10 days')
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO agent_runs (use_case, trigger, subject_kind, subject_key, session_id,
+                                enduser_id, surface, status, tldr, text, language,
+                                model_source, model, tokens_in, tokens_out, cost,
+                                review_tokens_in, review_tokens_out, review_cost, review_text,
+                                duration, created_at, finished_at)
+        VALUES
+            ('messenger', 'message', 'chat', 'session-k:1', 'session-k', 'kim', 'discord',
+             'completed', 'Morgen wird es sonnig.', 'Morgen sonnig, 18 Grad.',
+             'de', 'codex', 'gpt-6-luna', 1500, 90, 0, NULL, NULL, NULL, NULL,
+             INTERVAL '7 seconds', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'),
+            ('messenger', 'message', 'chat', 'session-k:2', 'session-k', 'kim', 'discord',
+             'completed', 'Der Trockner läuft noch 20 Minuten.',
+             'Der Trockner ist um 15:40 fertig.',
+             'de', 'codex', 'gpt-6-luna', 1700, 110, 0, 30000, 400, 0.003000,
+             'Nothing to save.',
+             INTERVAL '6 seconds', NOW() - INTERVAL '50 minutes', NOW() - INTERVAL '50 minutes'),
+            ('messenger', 'message', 'chat', 'session-l:1', 'session-l', 'lou', 'web',
+             'completed', 'Die Garage ist zu.', 'Das Garagentor ist seit 12:10 zu.',
+             'de', 'codex', 'gpt-6-luna', 1200, 60, 0, NULL, NULL, NULL, NULL,
+             INTERVAL '5 seconds', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes')
         """
     )
     conn.execute(
