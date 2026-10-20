@@ -231,12 +231,18 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_S3_SECRET_KEY_FILE`             | —                           | Its secret key, from a mounted file                            |
 | `MCP_TRIGGER_URL`                    | —                           | lares-agent-trigger base URL; with the key file enables `start_run` and `append_memory` |
 | `MCP_TRIGGER_KEY_FILE`               | —                           | The key the trigger's API takes, from a mounted file           |
+| `MCP_TRACING_ENDPOINT`               | —                           | OTLP/HTTP collector base URL (`http://<host>:4318`); unset keeps tracing off |
+| `MCP_TRACING_SAMPLING_RATIO`         | `0.1`                       | Share of new traces kept, decided by trace id                  |
 
 When `MCP_AUTH_ENABLED=true`, every request must carry a valid OIDC Bearer token signed by the configured JWKS. Tested against [Authentik](https://goauthentik.io/) but works with any OIDC-compliant authorization server.
 
 An agent that cannot run an OAuth flow authenticates with a static API key instead: `MCP_AUTH_CLIENTS_FILE` points at a mounted Secret holding `{"<client name>": "<key>"}` (keys of at least 32 characters), sent as `Authorization: Bearer <key>`. Such a machine client sees only the tools its entry in `MCP_AUTH_CLIENT_TOOLS` names, for example `{"lares-agent": ["list_*", "get_*", "query_*", "correlate_events", "search_wiki"]}`; a machine client without an entry sees no tools, a user without one keeps every tool. Denied calls are counted in the tool-call metric with outcome `denied`.
 
-A caller may be a person. `MCP_AUTH_PERSONS` lists the persons' handles, for example `["kim"]`: a machine client named by a handle is that person, and so is a token whose `preferred_username` claim is one. Every other caller has no person. A person reads their own rows of the ledger and the machines' rows; a caller without a person reads the machines' rows only. A token whose username names no person is let in and counted (`lares_mcp_bridge_unknown_tokens_total`). The server refuses to start when a listed handle has no key in `MCP_AUTH_CLIENTS_FILE` or no entry in `MCP_AUTH_CLIENT_TOOLS`. The person is `enduser.id` on the request's log lines.
+A caller may be a person. `MCP_AUTH_PERSONS` lists the persons' handles, for example `["kim"]`: a machine client named by a handle is that person, and so is a token whose `preferred_username` claim is one. Every other caller has no person. A person reads their own rows of the ledger and the machines' rows; a caller without a person reads the machines' rows only. A token whose username names no person is let in and counted (`lares_mcp_bridge_unknown_tokens_total`). The server refuses to start when a listed handle has no key in `MCP_AUTH_CLIENTS_FILE` or no entry in `MCP_AUTH_CLIENT_TOOLS`. The person is `enduser.id` on the request's log lines and its span.
+
+### Tracing
+
+With `MCP_TRACING_ENDPOINT` set, every request is one trace exported over OTLP/HTTP: FastMCP's server span (`tools/call <tool>`, continuing a `traceparent` the caller sent in `_meta`) with `enduser.id` and `lares.client_id` on it, and under it the database queries and the outgoing HTTP calls. Calls to the trigger carry `traceparent`, so a run `start_run` asks for continues the call's trace. Spans carry names and numbers, never a query's parameters or a tool's arguments; an outgoing call names its host, not its path. The readiness probe leaves no trace. New traces are kept at `MCP_TRACING_SAMPLING_RATIO`, decided by trace id; a trace that arrives sampled stays sampled. A log line inside a sampled span carries its `trace_id` and `span_id`.
 
 ### Operational endpoints
 

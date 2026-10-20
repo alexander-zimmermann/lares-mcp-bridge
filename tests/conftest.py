@@ -12,13 +12,24 @@ import pytest
 import pytest_asyncio
 import respx
 import structlog
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from testcontainers.postgres import PostgresContainer
 
-from lares_mcp_bridge import db
+from lares_mcp_bridge import db, tracing
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import sources, trigger
 
 from .support import TRIGGER_KEY, TRIGGER_URL, connect
+
+# One recording provider for the whole session: the global can only be set once.
+_exporter = InMemorySpanExporter()
+_provider = TracerProvider()
+_provider.add_span_processor(SimpleSpanProcessor(_exporter))
+trace.set_tracer_provider(_provider)
+tracing.instrument()
 
 
 @pytest.fixture
@@ -29,6 +40,14 @@ def clean_context() -> Iterator[None]:
         yield
     finally:
         structlog.contextvars.clear_contextvars()
+
+
+@pytest.fixture
+def spans() -> Iterator[InMemorySpanExporter]:
+    """The spans finished in this test, every one sampled."""
+    _exporter.clear()
+    yield _exporter
+    _exporter.clear()
 
 
 @pytest.fixture(autouse=True)

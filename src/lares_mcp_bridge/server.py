@@ -31,13 +31,14 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool, ToolResult
 from mcp.types import CallToolRequestParams, ListToolsRequest
+from opentelemetry import trace
 from starlette.applications import Starlette
 from starlette.middleware import Middleware as StarletteMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
-from . import __version__, db
+from . import __version__, db, tracing
 from . import auth as auth_module
 from . import metrics as metrics_module
 from . import nats as nats_module
@@ -87,6 +88,27 @@ def _principal_client() -> tuple[str | None, bool]:
     ctx = structlog.contextvars.get_contextvars()
     client_id = ctx.get("client_id")
     return (str(client_id) if client_id else None), ctx.get("client_kind") == "machine"
+
+
+class CallerOnSpan(Middleware):
+    """Name the caller on FastMCP's server span: ``enduser.id`` and ``lares.client_id``.
+
+    FastMCP fills ``enduser.id`` only from its own auth, which the bridge does
+    not use, so the handle AuthMiddleware resolved goes on here. The span is
+    opened before any middleware runs, so a denied call is named too.
+    """
+
+    async def on_request(
+        self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]
+    ) -> Any:
+        span = trace.get_current_span()
+        enduser_id = _principal_enduser_id()
+        client_id, _ = _principal_client()
+        if enduser_id is not None:
+            span.set_attribute("enduser.id", enduser_id)
+        if client_id is not None:
+            span.set_attribute("lares.client_id", client_id)
+        return await call_next(context)
 
 
 class ClientToolPolicy(Middleware):
@@ -176,7 +198,7 @@ class ToolTelemetry(Middleware):
 mcp: FastMCP = FastMCP(
     "lares-mcp-bridge",
     version=__version__,
-    middleware=[ClientToolPolicy(), ToolTelemetry()],
+    middleware=[CallerOnSpan(), ClientToolPolicy(), ToolTelemetry()],
 )
 
 
@@ -1026,6 +1048,8 @@ def build_app() -> Starlette:
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         assert _settings is not None
         configure_logging(_settings.log_level, _settings.log_format)
+        # Before the pools and clients open, so their queries and calls are traced.
+        tracing.configure(_settings)
         metrics_module.init()
         auth_module.configure(_settings)
         await db.init_pool(_settings)
@@ -1057,6 +1081,7 @@ def build_app() -> Starlette:
             pbs_enabled=_settings.pbs_enabled,
             s3_enabled=_settings.s3_enabled,
             trigger_enabled=_settings.trigger_enabled,
+            tracing_enabled=_settings.tracing_endpoint is not None,
         )
         try:
             async with mcp_app.lifespan(app):
@@ -1070,6 +1095,7 @@ def build_app() -> Starlette:
             await trigger_tools.close()
             await nats_module.close()
             await db.close_pool()
+            tracing.shutdown()
 
     routes = [
         Route("/livez", _livez, methods=["GET"]),

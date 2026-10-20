@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # Metrics: port of the Prometheus /metrics HTTP server.
     metrics_port: int = 9090
 
+    # Tracing: the OTLP/HTTP collector base URL (http://host:4318), unset keeps
+    # tracing off; the share of new traces kept, the platform's rendered ratio.
+    tracing_endpoint: str | None = None
+    tracing_sampling_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+
     # Auth: OIDC bearer validation via JWKS; disabled by default for local runs.
     auth_enabled: bool = False
     auth_jwks_url: str | None = None
