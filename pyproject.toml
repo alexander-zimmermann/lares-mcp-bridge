@@ -4,7 +4,7 @@ version = "1.30.0"
 description = "MCP server bridging homelab IoT data (KNX, EMS, WARP, SolarEdge) to Claude.ai via TimescaleDB"
 readme = "README.md"
 license = "GPL-2.0-or-later"
-requires-python = ">=3.14.8"
+requires-python = ">=3.15.0"
 authors = [
     { name = "Alexander Zimmermann" },
 ]
@@ -12,7 +12,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Home Automation",
 ]
 dependencies = [
@@ -64,7 +64,7 @@ packages = ["src/lares_mcp_bridge"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py315"
 
 [tool.ruff.lint]
 # D100/D104 pin the module/package docstring convention; the rest of the D
@@ -75,7 +75,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "RET", "SIM", "ARG", "D
 "tests/**" = ["ARG001"]  # pytest fixtures injected for setup side-effects
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
