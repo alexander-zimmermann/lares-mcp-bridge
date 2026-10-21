@@ -149,7 +149,7 @@ approval-gated control.
 
 ### Prerequisites
 
-- Python 3.14
+- Python 3.15
 - [uv](https://docs.astral.sh/uv/)
 - A Postgres database with the [TimescaleDB](https://www.timescale.com/) extension and at least one hypertable
 - A Postgres role with `SELECT` on the schemas/tables you want to expose
