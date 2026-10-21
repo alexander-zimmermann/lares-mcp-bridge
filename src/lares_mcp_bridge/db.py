@@ -34,6 +34,7 @@ from datetime import datetime
 from typing import Any, Literal, LiteralString
 
 import psycopg
+from opentelemetry.instrumentation.utils import suppress_instrumentation
 from psycopg import sql
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -178,8 +179,10 @@ def _require_write_pool() -> _Pool:
 async def healthcheck() -> bool:
     """Round-trip ``SELECT 1``; False (never an exception) when the DB is unreachable."""
     try:
-        async with _require_pool().connection() as conn:
-            await conn.execute("SELECT 1")
+        # The readiness probe runs every 10 s and is no bridge call: no trace.
+        with suppress_instrumentation():
+            async with _require_pool().connection() as conn:
+                await conn.execute("SELECT 1")
         return True
     except Exception as exc:
         log.warning("db_healthcheck_failed", error=str(exc))
@@ -262,7 +265,8 @@ async def blocking_read[T](
     The connection carries the read role and opens its transaction READ ONLY,
     so whatever ``work`` runs cannot write; it is closed when ``work`` returns.
     Counted as one query of ``tool`` on ``table_used``, however many
-    statements ``work`` runs.
+    statements ``work`` runs. ``asyncio.to_thread`` copies the context into
+    the thread, so the queries are traced under the call that made them.
     """
     if _read_dsn is None:
         raise RuntimeError("DB pool not initialised — call init_pool() first")

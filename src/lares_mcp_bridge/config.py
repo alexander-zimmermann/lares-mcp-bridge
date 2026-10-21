@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # Metrics: port of the Prometheus /metrics HTTP server.
     metrics_port: int = 9090
 
+    # Tracing: the OTLP/HTTP collector base URL (http://host:4318), unset keeps
+    # tracing off; the share of new traces kept, the platform's rendered ratio.
+    tracing_endpoint: str | None = None
+    tracing_sampling_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+
     # Auth: OIDC bearer validation via JWKS; disabled by default for local runs.
     auth_enabled: bool = False
     auth_jwks_url: str | None = None
@@ -68,6 +73,11 @@ class Settings(BaseSettings):
     auth_clients_file: str | None = None
     auth_clients: dict[str, str] = Field(default_factory=dict, repr=False)
     auth_client_tools: dict[str, list[str]] = Field(default_factory=dict)
+    # Persons: the handles of the declared persons (a JSON list). A machine
+    # client of that name, or a token whose `preferred_username` is that
+    # name, is that person and reads that person's runs; every other caller
+    # has no person. Each handle needs a key and an allowlist entry above.
+    auth_persons: list[str] = Field(default_factory=list)
 
     # NATS: live current-state reads from JetStream (last message per subject).
     # The nkey seed arrives as a mounted Secret file, same as the DB credentials;
@@ -158,6 +168,22 @@ class Settings(BaseSettings):
         if short:
             names = ", ".join(short)
             raise ValueError(f"machine client keys must be at least 32 characters: {names}")
+        return self
+
+    @model_validator(mode="after")
+    def _check_auth_persons(self) -> Settings:
+        keyless = sorted(set(self.auth_persons) - set(self.auth_clients))
+        if keyless:
+            names = ", ".join(keyless)
+            raise ValueError(
+                f"MCP_AUTH_PERSONS lists persons with no key in MCP_AUTH_CLIENTS_FILE: {names}"
+            )
+        unlisted = sorted(set(self.auth_persons) - set(self.auth_client_tools))
+        if unlisted:
+            names = ", ".join(unlisted)
+            raise ValueError(
+                f"MCP_AUTH_PERSONS lists persons with no entry in MCP_AUTH_CLIENT_TOOLS: {names}"
+            )
         return self
 
     @model_validator(mode="after")

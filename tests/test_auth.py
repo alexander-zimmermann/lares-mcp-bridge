@@ -12,15 +12,17 @@ import httpx
 import jwt
 import pytest
 import respx
+import structlog
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from jwt.algorithms import RSAAlgorithm
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 from lares_mcp_bridge import auth as auth_module
+from lares_mcp_bridge import metrics as metrics_module
 from lares_mcp_bridge.auth import AuthError, AuthMiddleware, Principal, verify_token
 from lares_mcp_bridge.config import Settings
 
@@ -28,6 +30,14 @@ JWKS_URL = "https://issuer.test/jwks"
 ISSUER = "https://issuer.test/"
 AUDIENCE = "lares-mcp-bridge"
 RESOURCE_URL = "https://mcp.test/mcp"
+
+# Kim is a declared person: a machine client of that name, and a connector's username.
+KIM_KEY = "k" * 40
+PERSONS: dict[str, object] = {
+    "auth_persons": ["kim"],
+    "auth_clients": {"kim": KIM_KEY, "lares-agent": "a" * 40},
+    "auth_client_tools": {"kim": ["list_*"], "lares-agent": ["list_*"]},
+}
 
 
 def _settings(**overrides: object) -> Settings:
@@ -152,6 +162,39 @@ def test_malformed_clients_file_is_rejected(tmp_path: Path) -> None:
         _settings(auth_clients_file=str(clients))
 
 
+def test_persons_arrive_as_a_json_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    clients = tmp_path / "clients.json"
+    clients.write_text(json.dumps({"kim": KIM_KEY}), encoding="utf-8")
+    monkeypatch.setenv("MCP_AUTH_PERSONS", '["kim"]')
+    monkeypatch.setenv("MCP_AUTH_CLIENT_TOOLS", '{"kim": ["list_*"]}')
+    assert _settings(auth_clients_file=str(clients)).auth_persons == ["kim"]
+
+
+def test_no_persons_is_the_default() -> None:
+    assert _settings().auth_persons == []
+
+
+def test_a_person_without_a_key_refuses_the_start(tmp_path: Path) -> None:
+    """The roll stops at the new pod instead of the person getting 401 later."""
+    clients = tmp_path / "clients.json"
+    clients.write_text(json.dumps({"lares-agent": "a" * 40}), encoding="utf-8")
+    with pytest.raises(ValueError, match="no key in MCP_AUTH_CLIENTS_FILE: kim"):
+        _settings(
+            auth_persons=["kim"],
+            auth_clients_file=str(clients),
+            auth_client_tools={"kim": ["list_*"]},
+        )
+
+
+def test_a_person_without_an_allowlist_refuses_the_start() -> None:
+    with pytest.raises(ValueError, match="no entry in MCP_AUTH_CLIENT_TOOLS: lou"):
+        _settings(
+            auth_persons=["kim", "lou"],
+            auth_clients={"kim": KIM_KEY, "lou": "l" * 40},
+            auth_client_tools={"kim": ["list_*"]},
+        )
+
+
 # ------------- verify_token -------------
 
 
@@ -224,6 +267,70 @@ async def test_unknown_key_falls_through_to_jwt(jwks_mock: respx.MockRouter) -> 
     with pytest.raises(AuthError) as exc_info:
         await verify_token("x" * 40, settings)
     assert exc_info.value.reason == "invalid_token"
+
+
+async def test_a_persons_machine_client_is_that_person(jwks_mock: respx.MockRouter) -> None:
+    settings = _settings(**PERSONS)
+    auth_module.configure(settings)
+
+    kim = await verify_token(KIM_KEY, settings)
+    agent = await verify_token("a" * 40, settings)
+
+    assert kim is not None
+    assert kim.enduser_id == "kim"
+    assert agent is not None
+    assert agent.enduser_id is None
+
+
+async def test_a_token_is_the_person_its_username_names(
+    jwks_mock: respx.MockRouter, keypair: RSAPrivateKey
+) -> None:
+    """The Claude.ai connector: Authentik's username is the owner's handle."""
+    settings = _settings(**PERSONS)
+    auth_module.configure(settings)
+    metrics_module.reset()
+
+    token = _sign(keypair, "key1", _claims(preferred_username="kim"))
+    principal = await verify_token(token, settings)
+
+    assert principal is not None
+    assert principal.enduser_id == "kim"
+    assert principal.kind == "user"
+    assert _unknown_tokens() == 0
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [{"preferred_username": "zed"}, {}],
+    ids=["no-such-person", "no-username"],
+)
+async def test_a_token_that_names_no_person_is_counted(
+    jwks_mock: respx.MockRouter, keypair: RSAPrivateKey, claims: dict[str, Any]
+) -> None:
+    """Not refused: the caller reads the machines' rows only, and the count is alerted on."""
+    settings = _settings(**PERSONS)
+    auth_module.configure(settings)
+    metrics_module.reset()
+
+    principal = await verify_token(_sign(keypair, "key1", _claims(**claims)), settings)
+
+    assert principal is not None
+    assert principal.enduser_id is None
+    assert _unknown_tokens() == 1
+
+
+async def test_a_machine_without_a_person_is_not_counted(jwks_mock: respx.MockRouter) -> None:
+    settings = _settings(**PERSONS)
+    auth_module.configure(settings)
+    metrics_module.reset()
+
+    await verify_token("a" * 40, settings)
+
+    assert _unknown_tokens() == 0
+
+
+def _unknown_tokens() -> float | None:
+    return metrics_module.get().registry.get_sample_value("lares_mcp_bridge_unknown_tokens_total")
 
 
 def test_match_machine_client_compares_every_key() -> None:
@@ -335,10 +442,15 @@ async def _ok(request: Request) -> PlainTextResponse:
     return PlainTextResponse(f"hello {request.scope.get('path')}")
 
 
+async def _identity(_request: Request) -> JSONResponse:
+    return JSONResponse(structlog.contextvars.get_contextvars())
+
+
 def _build_app(settings: Settings) -> AuthMiddleware:
     inner = Starlette(
         routes=[
             Route("/mcp", _ok),
+            Route("/identity", _identity),
             Route("/healthz", _ok),
             Route("/.well-known/oauth-protected-resource", _ok),
         ]
@@ -419,3 +531,24 @@ async def test_middleware_well_known_bypasses_auth(configured: Settings) -> None
     async with httpx.AsyncClient(transport=transport, base_url="https://test") as c:
         r = await c.get("/.well-known/oauth-protected-resource")
     assert r.status_code == 200
+
+
+async def test_middleware_binds_the_person_for_the_request(
+    jwks_mock: respx.MockRouter, keypair: RSAPrivateKey
+) -> None:
+    """Every log line of the request carries the person, and the tools read it there."""
+    settings = _settings(**PERSONS)
+    auth_module.configure(settings)
+    token = _sign(keypair, "key1", _claims(preferred_username="kim"))
+
+    app = _build_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as c:
+        person = await c.get("/identity", headers={"Authorization": f"Bearer {token}"})
+        machine = await c.get("/identity", headers={"Authorization": f"Bearer {'a' * 40}"})
+
+    assert person.json()["enduser.id"] == "kim"
+    assert person.json()["client_id"] == AUDIENCE
+    assert "enduser.id" not in machine.json()
+    assert machine.json()["client_id"] == "lares-agent"
+    assert structlog.contextvars.get_contextvars() == {}
