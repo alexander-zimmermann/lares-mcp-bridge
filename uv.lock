@@ -1019,12 +1019,15 @@ wheels = [
 
 [[package]]
 name = "lares-diagnostics-engine"
-version = "1.45.0"
-source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.45.0#3625366e0e57b3697750f4cfa1c70f66d753a3b9" }
+version = "1.46.0"
+source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.46.0#c73d6f3ca6c9701a592e882ad314b1f55181a588" }
 dependencies = [
     { name = "httpx" },
     { name = "jsonschema" },
+    { name = "nats-bridge-core" },
     { name = "nats-py", extra = ["nkeys"] },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1077,7 +1080,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=7.2.1" },
     { name = "fastmcp", specifier = ">=4.1.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.45.0" },
+    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.46.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.4.0" },
     { name = "nats-py", extras = ["nkeys"], specifier = ">=2.16.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45.0" },
@@ -1298,6 +1301,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/6e/371856a3fb9d31ca8dac321cda606860fa4548858c0cc45d9d1d4ca2628b/mypy_extensions-1.1.0.tar.gz", hash = "sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558", size = 6343, upload-time = "2025-04-22T14:54:24.164Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505", size = 4963, upload-time = "2025-04-22T14:54:22.983Z" },
+]
+
+[[package]]
+name = "nats-bridge-core"
+version = "0.9.0"
+source = { git = "https://github.com/alexander-zimmermann/nats-bridge-core?rev=v0.9.0#e0503c1b47229d7bb5bf3ad0887494c3231df886" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "nats-py", extra = ["nkeys"] },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
 ]
 
 [[package]]
