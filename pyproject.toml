@@ -27,7 +27,7 @@ dependencies = [
     "cachetools>=7.2.1",
     "prometheus-client>=0.26.0",
     "nats-py[nkeys]>=2.16.0",
-    "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.42.0",
+    "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.45.0",
     "boto3>=1.43.111",
     "opentelemetry-sdk>=1.45.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
