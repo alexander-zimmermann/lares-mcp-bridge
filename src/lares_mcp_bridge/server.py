@@ -516,9 +516,7 @@ async def list_runs(
     One row per run of every use case, whatever started it: an episode event,
     a schedule, a chat message or a hand. Each row carries what it produced
     (``tldr``, ``output_ref``), what it cost (``tokens_in``, ``tokens_out``,
-    ``cost``, ``duration_seconds``), what the background review after a chat
-    turn cost and said (``review_tokens_in``, ``review_tokens_out``,
-    ``review_cost``, ``review_text``) and the verdict it already has.
+    ``cost``, ``duration_seconds``) and the verdict it already has.
 
     You see your own chat runs and the machines' runs, never another
     person's. ``enduser_id`` names the person a chat run answered and
