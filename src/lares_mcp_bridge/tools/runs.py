@@ -46,8 +46,6 @@ _RUN_COLUMNS = sql.SQL(
     r.tldr, r.language, r.output_ref, r.output_state, r.model_source, r.model,
     r.tokens_in, r.tokens_out,
     r.cost::double precision AS cost,
-    r.review_tokens_in, r.review_tokens_out,
-    r.review_cost::double precision AS review_cost, r.review_text,
     EXTRACT(EPOCH FROM r.duration)::double precision AS duration_seconds,
     r.verdict, r.verdict_at, r.created_at, r.finished_at
     """

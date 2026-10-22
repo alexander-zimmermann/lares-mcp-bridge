@@ -613,10 +613,6 @@ LEFT JOIN episode_verdicts v ON v.episode_id = r.id;
             tokens_in      INTEGER,
             tokens_out     INTEGER,
             cost           NUMERIC(10, 6),
-            review_tokens_in  INTEGER,
-            review_tokens_out INTEGER,
-            review_cost       NUMERIC(10, 6),
-            review_text       TEXT,
             duration       INTERVAL,
             tool_trace     JSONB,
             verdict        TEXT           CHECK (verdict IN ('helpful', 'useless')),
@@ -731,22 +727,20 @@ ORDER BY episode_id, r.created_at DESC;
         INSERT INTO agent_runs (use_case, trigger, subject_kind, subject_key, session_id,
                                 enduser_id, surface, status, tldr, text, language,
                                 model_source, model, tokens_in, tokens_out, cost,
-                                review_tokens_in, review_tokens_out, review_cost, review_text,
                                 duration, created_at, finished_at)
         VALUES
             ('messenger', 'message', 'chat', 'session-k:1', 'session-k', 'kim', 'discord',
              'completed', 'Morgen wird es sonnig.', 'Morgen sonnig, 18 Grad.',
-             'de', 'codex', 'gpt-6-luna', 1500, 90, 0, NULL, NULL, NULL, NULL,
+             'de', 'codex', 'gpt-6-luna', 1500, 90, 0,
              INTERVAL '7 seconds', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours'),
             ('messenger', 'message', 'chat', 'session-k:2', 'session-k', 'kim', 'discord',
              'completed', 'Der Trockner läuft noch 20 Minuten.',
              'Der Trockner ist um 15:40 fertig.',
-             'de', 'codex', 'gpt-6-luna', 1700, 110, 0, 30000, 400, 0.003000,
-             'Nothing to save.',
+             'de', 'codex', 'gpt-6-luna', 1700, 110, 0,
              INTERVAL '6 seconds', NOW() - INTERVAL '50 minutes', NOW() - INTERVAL '50 minutes'),
             ('messenger', 'message', 'chat', 'session-l:1', 'session-l', 'lou', 'web',
              'completed', 'Die Garage ist zu.', 'Das Garagentor ist seit 12:10 zu.',
-             'de', 'codex', 'gpt-6-luna', 1200, 60, 0, NULL, NULL, NULL, NULL,
+             'de', 'codex', 'gpt-6-luna', 1200, 60, 0,
              INTERVAL '5 seconds', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes')
         """
     )

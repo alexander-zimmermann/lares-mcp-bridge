@@ -122,22 +122,16 @@ async def test_another_persons_run_is_not_found_even_by_its_id(clean_verdicts: N
     assert (await runs.list_runs(enduser_id=None, run_id=lou_run["run_id"]))["row_count"] == 0
 
 
-async def test_a_run_names_its_person_surface_and_background_review(
-    clean_verdicts: None,
-) -> None:
+async def test_a_run_names_its_person_and_surface(clean_verdicts: None) -> None:
     newest = (await runs.list_runs(enduser_id="kim", subject_key="session-k:2"))["runs"][0]
 
     assert newest["enduser_id"] == "kim"
     assert newest["surface"] == "discord"
-    assert newest["review_tokens_in"] == 30000
-    assert newest["review_tokens_out"] == 400
-    assert newest["review_cost"] == pytest.approx(0.003)
-    assert newest["review_text"] == "Nothing to save."
+    assert "review_cost" not in newest
 
     machine = (await runs.list_runs(enduser_id="kim", use_case="explain-episode"))["runs"][0]
     assert machine["enduser_id"] is None
     assert machine["surface"] is None
-    assert machine["review_cost"] is None
 
 
 async def test_invalid_window_kind_and_status_are_refused(clean_verdicts: None) -> None:
