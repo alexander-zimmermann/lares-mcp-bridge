@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
@@ -52,32 +51,10 @@ class Settings(BaseSettings):
     tracing_endpoint: str | None = None
     tracing_sampling_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
 
-    # Auth: OIDC bearer validation via JWKS; disabled by default for local runs.
-    auth_enabled: bool = False
-    auth_jwks_url: str | None = None
-    auth_issuer: str | None = None
-    auth_audience: str | None = None
-    auth_jwks_ttl_seconds: int = 3600
-    # Cooldown between JWKS fetch attempts — bounds how often unauthenticated
-    # callers with unknown-kid tokens can force a request to the issuer.
-    auth_jwks_min_refresh_seconds: float = 30.0
-    auth_resource_url: str | None = None
-
-    # Machine clients: an agent that cannot run an OAuth flow authenticates
-    # with a static API key instead of a JWT. The keys arrive as a mounted
-    # Secret file (a JSON object of client name to key, keys at least 32
-    # characters); the tool allowlist per client name is plain configuration
-    # (a JSON object of client name to tool names or fnmatch globs). A
-    # machine client without an allowlist entry sees no tools; a user client
-    # without one keeps every tool.
-    auth_clients_file: str | None = None
-    auth_clients: dict[str, str] = Field(default_factory=dict, repr=False)
-    auth_client_tools: dict[str, list[str]] = Field(default_factory=dict)
-    # Persons: the handles of the declared persons (a JSON list). A machine
-    # client of that name, or a token whose `preferred_username` is that
-    # name, is that person and reads that person's runs; every other caller
-    # has no person. Each handle needs a key and an allowlist entry above.
-    auth_persons: list[str] = Field(default_factory=list)
+    # Sign-in: the one key the gateway calls the bridge with, as a bearer token.
+    # In-cluster it arrives as a mounted Secret file, at least 32 characters.
+    gateway_key: str = Field(default="", repr=False)
+    gateway_key_file: str | None = None
 
     # NATS: live current-state reads from JetStream (last message per subject).
     # The nkey seed arrives as a mounted Secret file, same as the DB credentials;
@@ -140,50 +117,13 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _check_auth_config(self) -> Settings:
-        if self.auth_enabled:
-            missing = [
-                name
-                for name, value in (
-                    ("MCP_AUTH_JWKS_URL", self.auth_jwks_url),
-                    ("MCP_AUTH_ISSUER", self.auth_issuer),
-                    ("MCP_AUTH_AUDIENCE", self.auth_audience),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(f"MCP_AUTH_ENABLED=true requires {', '.join(missing)}")
-        return self
-
-    @model_validator(mode="after")
-    def _resolve_auth_clients_file(self) -> Settings:
-        if self.auth_clients_file:
-            raw = json.loads(Path(self.auth_clients_file).read_text(encoding="utf-8"))
-            if not isinstance(raw, dict) or not all(
-                isinstance(k, str) and isinstance(v, str) for k, v in raw.items()
-            ):
-                raise ValueError("MCP_AUTH_CLIENTS_FILE must hold a JSON object of name to key")
-            self.auth_clients = raw
-        short = sorted(name for name, key in self.auth_clients.items() if len(key) < 32)
-        if short:
-            names = ", ".join(short)
-            raise ValueError(f"machine client keys must be at least 32 characters: {names}")
-        return self
-
-    @model_validator(mode="after")
-    def _check_auth_persons(self) -> Settings:
-        keyless = sorted(set(self.auth_persons) - set(self.auth_clients))
-        if keyless:
-            names = ", ".join(keyless)
-            raise ValueError(
-                f"MCP_AUTH_PERSONS lists persons with no key in MCP_AUTH_CLIENTS_FILE: {names}"
-            )
-        unlisted = sorted(set(self.auth_persons) - set(self.auth_client_tools))
-        if unlisted:
-            names = ", ".join(unlisted)
-            raise ValueError(
-                f"MCP_AUTH_PERSONS lists persons with no entry in MCP_AUTH_CLIENT_TOOLS: {names}"
-            )
+    def _resolve_gateway_key(self) -> Settings:
+        if self.gateway_key_file:
+            self.gateway_key = Path(self.gateway_key_file).read_text(encoding="utf-8").strip()
+        if not self.gateway_key:
+            raise ValueError("MCP_GATEWAY_KEY or MCP_GATEWAY_KEY_FILE is required")
+        if len(self.gateway_key) < 32:
+            raise ValueError("the gateway key must be at least 32 characters")
         return self
 
     @model_validator(mode="after")

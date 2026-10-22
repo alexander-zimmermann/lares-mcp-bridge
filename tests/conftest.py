@@ -22,7 +22,7 @@ from lares_mcp_bridge import db, tracing
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import sources, trigger
 
-from .support import TRIGGER_KEY, TRIGGER_URL, connect
+from .support import GATEWAY_KEY, TRIGGER_KEY, TRIGGER_URL, connect
 
 # One recording provider for the whole session: the global can only be set once.
 _exporter = InMemorySpanExporter()
@@ -832,7 +832,7 @@ def settings(timescaledb_container: PostgresContainer) -> Settings:
         # it — in the cluster these are the separate rw credentials.
         MCP_DB_WRITE_USERNAME="test",
         MCP_DB_WRITE_PASSWORD="test",
-        MCP_AUTH_ENABLED="false",
+        MCP_GATEWAY_KEY=GATEWAY_KEY,
     )
     return Settings()  # type: ignore[call-arg]
 
@@ -878,6 +878,7 @@ async def trigger_client(trigger_key_file: Path) -> AsyncIterator[None]:
         db_name="x",
         db_username="x",
         db_password="x",
+        gateway_key=GATEWAY_KEY,
         nats_enabled=False,
         trigger_url=TRIGGER_URL,
         trigger_key_file=str(trigger_key_file),

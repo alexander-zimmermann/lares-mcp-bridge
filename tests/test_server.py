@@ -1,9 +1,9 @@
-"""App-factory tests: probe endpoints, OAuth discovery, MCP tool registration.
+"""App-factory tests: probe endpoints, the gateway's sign-in, MCP tool registration.
 
 ``build_app()`` is exercised with the real seeded TimescaleDB container behind
-it (NATS disabled, auth disabled); the MCP layer is driven in-process via the
-fastmcp ``Client`` so the ``@mcp.tool`` wrappers and their metrics
-instrumentation run for real.
+it (NATS disabled); the MCP layer is driven in-process via the fastmcp
+``Client`` so the ``@mcp.tool`` wrappers and their metrics instrumentation run
+for real.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from starlette.testclient import TestClient
@@ -21,6 +22,8 @@ from testcontainers.postgres import PostgresContainer
 from lares_mcp_bridge import metrics as metrics_module
 from lares_mcp_bridge import server
 from lares_mcp_bridge.tools import sources as sources_tools
+
+from .support import GATEWAY_KEY
 
 EXPECTED_TOOLS = {
     "list_data_sources",
@@ -66,12 +69,12 @@ def app_env(timescaledb_container: PostgresContainer, monkeypatch: pytest.Monkey
     monkeypatch.setenv("MCP_DB_NAME", "homelab")
     monkeypatch.setenv("MCP_DB_USERNAME", "test")
     monkeypatch.setenv("MCP_DB_PASSWORD", "test")
-    monkeypatch.setenv("MCP_AUTH_ENABLED", "false")
+    monkeypatch.setenv("MCP_GATEWAY_KEY", GATEWAY_KEY)
     monkeypatch.setenv("MCP_NATS_ENABLED", "false")
     monkeypatch.setenv("MCP_METRICS_PORT", "0")  # ephemeral port, avoids clashes
 
 
-def test_health_and_discovery_endpoints(app_env: None) -> None:
+def test_the_probes_answer_and_everything_else_needs_the_gateway(app_env: None) -> None:
     app = server.build_app()
     with TestClient(app) as client:
         livez = client.get("/livez")
@@ -85,9 +88,9 @@ def test_health_and_discovery_endpoints(app_env: None) -> None:
         assert body["db"] is True
         assert "nats" not in body  # disabled → not reported
 
-        meta = client.get("/.well-known/oauth-protected-resource")
-        assert meta.status_code == 200
-        assert "authorization_servers" in meta.json()
+        # No discovery: the gateway runs the sign-in, the bridge only checks its key.
+        assert client.get("/.well-known/oauth-protected-resource").status_code == 401
+        assert client.post("/mcp", json={}).status_code == 401
 
 
 def test_healthz_has_no_wiki_dependency(
@@ -163,10 +166,11 @@ async def test_literal_parameters_reach_the_client_as_enums() -> None:
 
 
 async def test_middleware_counts_every_tool_outcome(
-    db_pool: None, monkeypatch: pytest.MonkeyPatch
+    db_pool: None, monkeypatch: pytest.MonkeyPatch, clean_context: None
 ) -> None:
-    """One middleware, not one wrapper per tool, records ok, refused and error per tool."""
+    """One middleware, not one wrapper per tool, counts each outcome per client and tool."""
     metrics_module.reset()
+    structlog.contextvars.bind_contextvars(client_id="lares")
 
     async def database_gone() -> list[dict[str, Any]]:
         raise RuntimeError("database gone")
@@ -182,7 +186,7 @@ async def test_middleware_counts_every_tool_outcome(
     def count(tool: str, outcome: str) -> float | None:
         return metrics_module.get().registry.get_sample_value(
             "lares_mcp_bridge_tool_calls_total",
-            {"tool": tool, "sub": "anonymous", "outcome": outcome},
+            {"tool": tool, "client_id": "lares", "outcome": outcome},
         )
 
     assert count("list_data_sources", "ok") == 1

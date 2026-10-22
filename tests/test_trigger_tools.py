@@ -17,7 +17,7 @@ import respx
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import trigger
 
-from .support import TRIGGER_KEY, TRIGGER_URL
+from .support import GATEWAY_KEY, TRIGGER_KEY, TRIGGER_URL
 
 
 def _settings(trigger_url: str | None = None, trigger_key_file: str | None = None) -> Settings:
@@ -26,7 +26,7 @@ def _settings(trigger_url: str | None = None, trigger_key_file: str | None = Non
         db_name="x",
         db_username="x",
         db_password="x",
-        auth_enabled=False,
+        gateway_key=GATEWAY_KEY,
         nats_enabled=False,
         trigger_url=trigger_url,
         trigger_key_file=trigger_key_file,
