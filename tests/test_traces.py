@@ -9,7 +9,6 @@ import pytest
 import respx
 import structlog
 from fastmcp import Client
-from fastmcp.exceptions import ToolError
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -44,16 +43,14 @@ async def test_a_tool_call_names_the_person_and_the_client(
     clean_verdicts: None, clean_context: None, spans: InMemorySpanExporter
 ) -> None:
     """The link on the runs table finds a person's calls by `enduser.id`."""
-    structlog.contextvars.bind_contextvars(
-        **{"client_id": "kim", "client_kind": "user", "enduser.id": "kim"}
-    )
+    structlog.contextvars.bind_contextvars(**{"client_id": "claude-ai", "enduser.id": "kim"})
     async with Client(server.mcp) as client:
         await client.call_tool("list_runs", {"days": 3})
 
     span = _server_span(spans, "list_runs")
     assert span.attributes is not None
     assert span.attributes["enduser.id"] == "kim"
-    assert span.attributes["lares.client_id"] == "kim"
+    assert span.attributes["lares.client_id"] == "claude-ai"
     assert span.attributes["gen_ai.tool.name"] == "list_runs"
     # The query runs under the call, with its placeholders and never their values.
     (query,) = [s for s in _under(spans, span) if s.kind is SpanKind.CLIENT]
@@ -67,31 +64,14 @@ async def test_a_tool_call_names_the_person_and_the_client(
 async def test_a_caller_without_a_person_is_named_by_the_client_alone(
     clean_verdicts: None, clean_context: None, spans: InMemorySpanExporter
 ) -> None:
-    structlog.contextvars.bind_contextvars(client_id="lares-agent", client_kind="user")
+    structlog.contextvars.bind_contextvars(client_id="lares")
     async with Client(server.mcp) as client:
         await client.call_tool("list_runs", {})
 
     span = _server_span(spans, "list_runs")
     assert span.attributes is not None
     assert "enduser.id" not in span.attributes
-    assert span.attributes["lares.client_id"] == "lares-agent"
-
-
-async def test_a_denied_call_is_named_too(clean_context: None, spans: InMemorySpanExporter) -> None:
-    """A client calling outside its allowlist shows up in Tempo under its name."""
-    structlog.contextvars.bind_contextvars(client_id="stranger", client_kind="machine")
-    async with Client(server.mcp) as client:
-        with pytest.raises(ToolError, match="tool_not_allowed"):
-            await client.call_tool("list_runs", {})
-
-    # Refused before FastMCP names the tool, the span keeps the method's name.
-    (span,) = [
-        s
-        for s in spans.get_finished_spans()
-        if s.name == "tools/call" and s.kind is SpanKind.SERVER
-    ]
-    assert span.attributes is not None
-    assert span.attributes["lares.client_id"] == "stranger"
+    assert span.attributes["lares.client_id"] == "lares"
 
 
 async def test_a_started_run_continues_the_call_that_asked_for_it(

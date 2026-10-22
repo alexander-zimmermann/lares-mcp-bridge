@@ -23,8 +23,8 @@ class Metrics:
 
         self.tool_calls = Counter(
             "lares_mcp_bridge_tool_calls_total",
-            "MCP tool invocations partitioned by tool, OIDC subject, and outcome.",
-            ["tool", "sub", "outcome"],
+            "MCP tool invocations partitioned by tool, the gateway route of the call, and outcome.",
+            ["tool", "client_id", "outcome"],
             registry=self.registry,
         )
         self.db_queries = Counter(
@@ -37,17 +37,6 @@ class Metrics:
             "lares_mcp_bridge_db_query_duration_seconds",
             "Wall-clock duration of database queries.",
             ["tool"],
-            registry=self.registry,
-        )
-        self.unknown_tokens = Counter(
-            "lares_mcp_bridge_unknown_tokens_total",
-            "Accepted bearer tokens whose preferred_username names no person in MCP_AUTH_PERSONS.",
-            registry=self.registry,
-        )
-        self.jwks_refresh = Counter(
-            "lares_mcp_bridge_jwks_refresh_total",
-            "JWKS cache refreshes partitioned by result (ok|error).",
-            ["result"],
             registry=self.registry,
         )
         self.nats_fetches = Counter(

@@ -1,4 +1,5 @@
-"""What the fixtures and the tests share: the container connection and the trigger's address."""
+"""What the fixtures and the tests share: the container connection, the trigger's address
+and the gateway's key."""
 
 from __future__ import annotations
 
@@ -9,6 +10,9 @@ from testcontainers.postgres import PostgresContainer
 # both pods share, answered by a respx mock.
 TRIGGER_URL = "http://lares-agent-trigger.agents.svc.cluster.local:8080"
 TRIGGER_KEY = "t" * 32
+
+# The key the gateway calls the bridge with.
+GATEWAY_KEY = "g" * 40
 
 
 def connect(container: PostgresContainer) -> psycopg.Connection:

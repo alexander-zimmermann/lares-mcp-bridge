@@ -69,9 +69,9 @@ behind high-level questions:
 
 | Tool                          | What it does                                                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `start_run(use_case, subject, focus)` | Asks the trigger to start a declared use case now: on an episode (`subject` = the episode id) or, for a schedule use case, its cron job, with what the owner asked for as `focus`. The trigger claims the ledger row, counts the day's budget and delivers the output where the use case says; the tool hands back its answer (`run_id` or `job_id`, the `output` targets) or its reason for refusing. Meant for the chat only: its own machine client, so no run the platform starts holds it. |
+| `start_run(use_case, subject, focus)` | Asks the trigger to start a declared use case now: on an episode (`subject` = the episode id) or, for a schedule use case, its cron job, with what the owner asked for as `focus`. The trigger claims the ledger row, counts the day's budget and delivers the output where the use case says; the tool hands back its answer (`run_id` or `job_id`, the `output` targets) or its reason for refusing. Meant for the chat only: a gateway route of its own, so no run the platform starts holds it. |
 | `get_memory(use_case)`        | The working notes a use case keeps between its runs (`agent_memory`), read with the read role; one that has written nothing reads as empty. |
-| `append_memory(use_case, line)` | Asks the trigger to append one note to that memory. The trigger keeps it to about 8 KB by dropping the oldest lines. Its own machine client with `get_memory`, held only by the runs of use cases that keep a memory. |
+| `append_memory(use_case, line)` | Asks the trigger to append one note to that memory. The trigger keeps it to about 8 KB by dropping the oldest lines. A gateway route of its own with `get_memory`, held only by the runs of use cases that keep a memory. |
 
 **Live** (current state straight from NATS JetStream; requires `MCP_NATS_ENABLED=true`)
 
@@ -98,7 +98,7 @@ instead — the one read-only route to raw content.
 
 The write runs under a second key whose group carries `read:pages` and
 `write:pages` and nothing else — no delete, no move, no styles or scripts. It
-is meant for a machine client of its own whose allowlist holds
+is meant for a gateway route of its own that serves
 `update_wiki_page` only, so no run that only reads ever holds it. Wiki.js
 resets whatever an update leaves out (an omitted publish flag unpublishes the
 page, omitted tags fail the update), so the tool reads the page's row first and
@@ -145,7 +145,7 @@ approval-gated control.
 
 ## Standalone usage
 
-`lares-mcp-bridge` does not depend on any specific cluster, ingress, or auth setup. You can run it against any TimescaleDB instance you already have.
+`lares-mcp-bridge` does not depend on any specific cluster or ingress. You can run it against any TimescaleDB instance you already have. It does expect an MCP gateway in front of it that signs the callers in (see [Sign-in](#sign-in)).
 
 ### Prerequisites
 
@@ -168,16 +168,16 @@ export MCP_DB_USERNAME=mcp_readonly
 export MCP_DB_PASSWORD=secret
 # The live tools default to an in-cluster NATS URL — disable them standalone:
 export MCP_NATS_ENABLED=false
+# The key the gateway calls with, at least 32 characters:
+export MCP_GATEWAY_KEY=$(openssl rand -hex 32)
 
 uv run lares-mcp-bridge
 # server listening on http://0.0.0.0:8080/mcp
 ```
 
-### Connect Claude.ai
+### Connect a client
 
-Open Claude.ai → Settings → Connectors → "Add custom connector" → URL `http://localhost:8080/mcp` (or wherever you exposed the server). Start a chat and ask "what data sources do you have?" — the connector will surface the tools listed above.
-
-For a production deployment, put the server behind TLS and an authenticating proxy (or enable the built-in Authentik OAuth + JWKS validation, see configuration below).
+Every request carries the gateway key and names its caller (see [Sign-in](#sign-in)), so a client connects through a gateway that does both, such as [agentgateway](https://agentgateway.dev/). For a quick local check, an MCP client that sets headers can stand in for it: `Authorization: Bearer $MCP_GATEWAY_KEY` and `X-Client-Id: local` against `http://localhost:8080/mcp`.
 
 ### Configuration
 
@@ -204,16 +204,8 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_DB_POOL_MAX`                    | `10`                        | psycopg pool max size                                          |
 | `MCP_QUERY_ROW_LIMIT`                | `5000`                      | Hard cap on rows returned by the query tools                   |
 | `MCP_METRICS_PORT`                   | `9090`                      | Prometheus `/metrics` port                                     |
-| `MCP_AUTH_ENABLED`                   | `false`                     | Enable Bearer-token validation                                 |
-| `MCP_AUTH_JWKS_URL`                  | —                           | JWKS endpoint when auth is enabled                             |
-| `MCP_AUTH_ISSUER`                    | —                           | Expected `iss` claim                                           |
-| `MCP_AUTH_AUDIENCE`                  | —                           | Expected `aud` claim                                           |
-| `MCP_AUTH_JWKS_TTL_SECONDS`          | `3600`                      | JWKS cache lifetime                                            |
-| `MCP_AUTH_JWKS_MIN_REFRESH_SECONDS`  | `30`                        | Cooldown between JWKS fetch attempts                           |
-| `MCP_AUTH_RESOURCE_URL`              | —                           | Public URL for RFC 9728 protected-resource metadata            |
-| `MCP_AUTH_CLIENTS_FILE`              | —                           | Machine clients: JSON object of client name to API key         |
-| `MCP_AUTH_CLIENT_TOOLS`              | `{}`                        | Tool allowlist per client name (JSON; names or fnmatch globs)  |
-| `MCP_AUTH_PERSONS`                   | `[]`                        | Handles of the declared persons (JSON list)                    |
+| `MCP_GATEWAY_KEY`                    | _required_                  | The key the gateway calls with, at least 32 characters         |
+| `MCP_GATEWAY_KEY_FILE`               | —                           | Read the gateway key from a mounted file (overrides `MCP_GATEWAY_KEY`) |
 | `MCP_NATS_ENABLED`                   | `true`                      | Enable the live tools (NATS JetStream)                         |
 | `MCP_NATS_SERVERS`                   | `nats://nats.nats.svc:4222` | Comma-separated NATS server URLs                               |
 | `MCP_NATS_NKEY_SEED_FILE`            | —                           | nkey seed file for NATS auth (anonymous when unset)            |
@@ -234,11 +226,11 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_TRACING_ENDPOINT`               | —                           | OTLP/HTTP collector base URL (`http://<host>:4318`); unset keeps tracing off |
 | `MCP_TRACING_SAMPLING_RATIO`         | `0.1`                       | Share of new traces kept, decided by trace id                  |
 
-When `MCP_AUTH_ENABLED=true`, every request must carry a valid OIDC Bearer token signed by the configured JWKS. Tested against [Authentik](https://goauthentik.io/) but works with any OIDC-compliant authorization server.
+### Sign-in
 
-An agent that cannot run an OAuth flow authenticates with a static API key instead: `MCP_AUTH_CLIENTS_FILE` points at a mounted Secret holding `{"<client name>": "<key>"}` (keys of at least 32 characters), sent as `Authorization: Bearer <key>`. Such a machine client sees only the tools its entry in `MCP_AUTH_CLIENT_TOOLS` names, for example `{"lares-agent": ["list_*", "get_*", "query_*", "correlate_events", "search_wiki"]}`; a machine client without an entry sees no tools, a user without one keeps every tool. Denied calls are counted in the tool-call metric with outcome `denied`.
+The bridge answers its gateway only. The gateway signs every caller in (a key per route, or an OAuth sign-in for a person's connector), serves each route its own list of tools, and calls the bridge with one static key: every request but the probes must carry `Authorization: Bearer <MCP_GATEWAY_KEY>`, or it gets 401.
 
-A caller may be a person. `MCP_AUTH_PERSONS` lists the persons' handles, for example `["kim"]`: a machine client named by a handle is that person, and so is a token whose `preferred_username` claim is one. Every other caller has no person. A person reads their own rows of the ledger and the machines' rows; a caller without a person reads the machines' rows only. A token whose username names no person is let in and counted (`lares_mcp_bridge_unknown_tokens_total`). The server refuses to start when a listed handle has no key in `MCP_AUTH_CLIENTS_FILE` or no entry in `MCP_AUTH_CLIENT_TOOLS`. The person is `enduser.id` on the request's log lines and its span.
+The gateway names the caller in two headers it sets itself, overwriting whatever the caller sent: `X-Client-Id`, the route the call came in on, and `X-Enduser-Id`, the person's handle, absent for a machine. A request with the key but without `X-Client-Id` gets 401 too. The client is `lares.client_id` on the call's span and the `client_id` label of the tool-call metric; the person is `enduser.id` on the request's log lines and its span. A person reads their own rows of the ledger and the machines' rows, and `set_verdict` records them; a caller without a person reads the machines' rows only.
 
 ### Tracing
 
@@ -248,7 +240,7 @@ With `MCP_TRACING_ENDPOINT` set, every request is one trace exported over OTLP/H
 
 - `GET /livez` — liveness: process is up; never depends on DB/NATS health.
 - `GET /healthz` — readiness/deep health: 503 when the database is unreachable; reports NATS connectivity when the live tools are enabled. Neither the wiki, the backup server nor the object store is part of it — their outage fails their tools, not the pod.
-- `GET :9090/metrics` — Prometheus metrics (tool calls, DB query durations, JWKS refreshes, tokens that name no person, NATS fetches).
+- `GET :9090/metrics` — Prometheus metrics (tool calls per client, DB query durations, NATS fetches).
 
 ### Container image
 
@@ -261,6 +253,7 @@ docker run --rm -p 8080:8080 \
   -e MCP_DB_USERNAME=mcp_readonly \
   -e MCP_DB_PASSWORD=secret \
   -e MCP_NATS_ENABLED=false \
+  -e MCP_GATEWAY_KEY=<at least 32 characters> \
   ghcr.io/alexander-zimmermann/lares-mcp-bridge:latest
 ```
 
@@ -284,7 +277,7 @@ uv run mypy src
 uv run pytest -q
 ```
 
-Tests use [`testcontainers`](https://testcontainers-python.readthedocs.io/) to spin up a real TimescaleDB instance — no DB mocks — and a real rustfs for the storage tools; external HTTP (Wiki.js, the backup server, the trigger, JWKS) is faked with `respx`.
+Tests use [`testcontainers`](https://testcontainers-python.readthedocs.io/) to spin up a real TimescaleDB instance — no DB mocks — and a real rustfs for the storage tools; external HTTP (Wiki.js, the backup server, the trigger) is faked with `respx`.
 
 ## License
 

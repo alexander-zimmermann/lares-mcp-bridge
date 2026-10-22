@@ -8,10 +8,11 @@ by clients.
 
 Each tool here is its LLM-facing docstring plus the call into ``tools/*``;
 logging and the per-tool outcome metric are one middleware, not one wrapper
-per tool, and the per-client tool allowlist is another one in front of it.
-A tool refuses bad arguments with ``ValueError``; the outcome middleware
-hands that back as a result, ``{"refused": "<reason>"}``, never as an MCP
-error — see :class:`ToolTelemetry` for why.
+per tool. Which tools a caller sees is the gateway's business: each of its
+routes serves its own list. A tool refuses bad arguments with
+``ValueError``; the outcome middleware hands that back as a result,
+``{"refused": "<reason>"}``, never as an MCP error — see
+:class:`ToolTelemetry` for why.
 
 The app is exposed via :func:`build_app` (uvicorn factory) so importing this
 module has no side effects — settings are only loaded when the app is built.
@@ -19,9 +20,8 @@ module has no side effects — settings are only loaded when the app is built.
 
 from __future__ import annotations
 
-import fnmatch
 import json
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -29,8 +29,8 @@ import structlog
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
-from fastmcp.tools.base import Tool, ToolResult
-from mcp.types import CallToolRequestParams, ListToolsRequest
+from fastmcp.tools.base import ToolResult
+from mcp.types import CallToolRequestParams
 from opentelemetry import trace
 from starlette.applications import Starlette
 from starlette.middleware import Middleware as StarletteMiddleware
@@ -39,9 +39,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from . import __version__, db, tracing
-from . import auth as auth_module
 from . import metrics as metrics_module
 from . import nats as nats_module
+from .auth import GatewayAuth
 from .config import Settings, load_settings
 from .logging_setup import configure_logging, get_logger
 from .tools import backtest as backtest_tools
@@ -67,88 +67,41 @@ from .tools.verdicts import Verdict, VerdictTarget
 log = get_logger(__name__)
 
 
-def _principal_sub() -> str:
-    """Return the OIDC ``sub`` bound by AuthMiddleware, or ``anonymous``."""
-    sub = structlog.contextvars.get_contextvars().get("sub")
-    return str(sub) if sub else "anonymous"
+def _caller_client() -> str | None:
+    """The route the gateway named for the call, as GatewayAuth bound it."""
+    client_id = structlog.contextvars.get_contextvars().get("client_id")
+    return str(client_id) if client_id else None
 
 
 def _record_tool_call(tool: str, outcome: str) -> None:
-    metrics_module.get().tool_calls.labels(tool=tool, sub=_principal_sub(), outcome=outcome).inc()
+    client_id = _caller_client() or "anonymous"
+    metrics_module.get().tool_calls.labels(tool=tool, client_id=client_id, outcome=outcome).inc()
 
 
-def _principal_enduser_id() -> str | None:
-    """The caller's handle AuthMiddleware resolved, or None for a caller without a person."""
+def _caller_enduser_id() -> str | None:
+    """The person the gateway named for the call, or None for a machine."""
     enduser_id = structlog.contextvars.get_contextvars().get("enduser.id")
     return str(enduser_id) if enduser_id else None
-
-
-def _principal_client() -> tuple[str | None, bool]:
-    """The ``client_id`` AuthMiddleware bound and whether it is a machine client."""
-    ctx = structlog.contextvars.get_contextvars()
-    client_id = ctx.get("client_id")
-    return (str(client_id) if client_id else None), ctx.get("client_kind") == "machine"
 
 
 class CallerOnSpan(Middleware):
     """Name the caller on FastMCP's server span: ``enduser.id`` and ``lares.client_id``.
 
     FastMCP fills ``enduser.id`` only from its own auth, which the bridge does
-    not use, so the handle AuthMiddleware resolved goes on here. The span is
-    opened before any middleware runs, so a denied call is named too.
+    not use, so the person the gateway named goes on here; the span sits
+    under the gateway's span of the call.
     """
 
     async def on_request(
         self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]
     ) -> Any:
         span = trace.get_current_span()
-        enduser_id = _principal_enduser_id()
-        client_id, _ = _principal_client()
+        enduser_id = _caller_enduser_id()
+        client_id = _caller_client()
         if enduser_id is not None:
             span.set_attribute("enduser.id", enduser_id)
         if client_id is not None:
             span.set_attribute("lares.client_id", client_id)
-        return await call_next(context)
-
-
-class ClientToolPolicy(Middleware):
-    """Expose to each client only the tools its allowlist names.
-
-    Keyed on the ``client_id`` AuthMiddleware bound: a machine client without
-    an entry gets nothing, a user client without one keeps everything. The
-    allowlist is the platform's ceiling for an agent; whatever the agent's
-    own harness restricts on top is its business. A denied call is counted
-    like any other outcome, so a misconfigured agent shows up in metrics
-    instead of failing quietly.
-    """
-
-    @staticmethod
-    def _allowed(tool: str) -> bool:
-        client_id, machine = _principal_client()
-        policy = _settings.auth_client_tools if _settings is not None else {}
-        patterns = policy.get(client_id) if client_id is not None else None
-        if patterns is None:
-            return not machine
-        return any(fnmatch.fnmatchcase(tool, pattern) for pattern in patterns)
-
-    async def on_list_tools(
-        self,
-        context: MiddlewareContext[ListToolsRequest],
-        call_next: CallNext[ListToolsRequest, Sequence[Tool]],
-    ) -> Sequence[Tool]:
-        tools = await call_next(context)
-        return [tool for tool in tools if self._allowed(tool.name)]
-
-    async def on_call_tool(
-        self,
-        context: MiddlewareContext[CallToolRequestParams],
-        call_next: CallNext[CallToolRequestParams, ToolResult],
-    ) -> ToolResult:
-        tool = context.message.name
-        if not self._allowed(tool):
-            _record_tool_call(tool, "denied")
-            log.info("tool_denied", tool=tool)
-            raise ToolError(f"tool_not_allowed: {tool}")
         return await call_next(context)
 
 
@@ -198,7 +151,7 @@ class ToolTelemetry(Middleware):
 mcp: FastMCP = FastMCP(
     "lares-mcp-bridge",
     version=__version__,
-    middleware=[CallerOnSpan(), ClientToolPolicy(), ToolTelemetry()],
+    middleware=[CallerOnSpan(), ToolTelemetry()],
 )
 
 
@@ -582,7 +535,7 @@ async def list_runs(
     * ``days`` — window in days on the run's creation
     """
     return await run_tools.list_runs(
-        enduser_id=_principal_enduser_id(),
+        enduser_id=_caller_enduser_id(),
         run_id=run_id,
         use_case=use_case,
         subject_kind=subject_kind,
@@ -625,7 +578,7 @@ async def set_verdict(
     This is the owner's act. An agent never calls it.
     """
     return await verdict_tools.set_verdict(
-        enduser_id=_principal_enduser_id(),
+        enduser_id=_caller_enduser_id(),
         target=target,
         verdict=verdict,
         episode_id=episode_id,
@@ -1028,12 +981,6 @@ async def _healthz(_request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=200 if db_ok else 503)
 
 
-async def _oauth_protected_resource(_request: Request) -> JSONResponse:
-    if _settings is None:
-        return JSONResponse({"error": "not_ready"}, status_code=503)
-    return JSONResponse(auth_module.oauth_protected_resource_metadata(_settings))
-
-
 def build_app() -> Starlette:
     """Load settings and assemble the Starlette app (uvicorn factory target)."""
     global _settings
@@ -1051,7 +998,6 @@ def build_app() -> Starlette:
         # Before the pools and clients open, so their queries and calls are traced.
         tracing.configure(_settings)
         metrics_module.init()
-        auth_module.configure(_settings)
         await db.init_pool(_settings)
         await db.init_write_pool(_settings)
         if _settings.nats_enabled:
@@ -1074,7 +1020,6 @@ def build_app() -> Starlette:
             host=_settings.host,
             port=_settings.port,
             metrics_port=_settings.metrics_port,
-            auth_enabled=_settings.auth_enabled,
             nats_enabled=_settings.nats_enabled,
             wikijs_enabled=_settings.wikijs_enabled,
             wikijs_write_enabled=_settings.wikijs_write_enabled,
@@ -1100,12 +1045,7 @@ def build_app() -> Starlette:
     routes = [
         Route("/livez", _livez, methods=["GET"]),
         Route("/healthz", _healthz, methods=["GET"]),
-        Route(
-            "/.well-known/oauth-protected-resource",
-            _oauth_protected_resource,
-            methods=["GET"],
-        ),
         Mount("/", app=mcp_app),
     ]
-    middleware = [StarletteMiddleware(auth_module.AuthMiddleware, settings=_settings)]
+    middleware = [StarletteMiddleware(GatewayAuth, key=_settings.gateway_key)]
     return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)

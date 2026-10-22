@@ -12,15 +12,8 @@ from lares_mcp_bridge.tools import runs, verdicts
 
 @pytest.fixture
 def kims_connector(clean_context: None) -> None:
-    """What the auth middleware binds for a connector token whose username is Kim's handle."""
-    structlog.contextvars.bind_contextvars(
-        **{
-            "sub": "5f1c0e",
-            "client_id": "lares-mcp-bridge",
-            "client_kind": "user",
-            "enduser.id": "kim",
-        }
-    )
+    """What GatewayAuth binds for a call Kim signed in to through the claude.ai connector."""
+    structlog.contextvars.bind_contextvars(**{"client_id": "claude-ai", "enduser.id": "kim"})
 
 
 async def test_list_runs_defaults_to_the_last_week(clean_verdicts: None) -> None:
