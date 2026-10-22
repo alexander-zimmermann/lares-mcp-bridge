@@ -1,7 +1,5 @@
 # lares-mcp-bridge
 
-_Formerly `iot-mcp-bridge`._
-
 A near read-only [Model Context Protocol](https://modelcontextprotocol.io) server that lets a large language model — Claude.ai, a local Ollama instance, or any other MCP-aware client — answer questions about an **IoT-enabled home**: heating, photovoltaics, EV charging, KNX bus events, room climate.
 
 Instead of giving the LLM raw SQL access (brittle, hard to bound, no audit), `lares-mcp-bridge` exposes a small set of well-shaped tools backed by **TimescaleDB hypertables** plus their **continuous aggregates**. The LLM picks a tool, the server runs a parametrised query against a long-term timeseries store, and the result comes back already aggregated and capped to a token-friendly size.
