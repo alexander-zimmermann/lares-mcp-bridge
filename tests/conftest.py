@@ -276,7 +276,7 @@ def _seed(conn: psycopg.Connection) -> None:
         """
     )
 
-    # ems_esp seed — every 3rd row burns at 50 kW, otherwise 0. That gives
+    # ems_esp seed — every 3rd row burns at 50 % modulation, otherwise 0. That gives
     # ~67 distinct ON/OFF cycles in 200 rows for heating_cycles to detect.
     conn.execute(
         """
