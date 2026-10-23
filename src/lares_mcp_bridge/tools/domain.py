@@ -110,13 +110,13 @@ _HEATING_CYCLES_SQL = sql.SQL(
             MIN(time)                               AS start_ts,
             MAX(time)                               AS end_ts,
             EXTRACT(EPOCH FROM (MAX(time) - MIN(time)))::float AS duration_seconds,
-            MAX(curburnpow)::float                  AS peak_power_kw,
-            AVG(curburnpow)::float                  AS avg_power_kw
+            MAX(curburnpow)::float                  AS peak_modulation_pct,
+            AVG(curburnpow)::float                  AS avg_modulation_pct
         FROM cycles
         WHERE on_state = 1
         GROUP BY cycle_id
     )
-    SELECT start_ts, end_ts, duration_seconds, peak_power_kw, avg_power_kw
+    SELECT start_ts, end_ts, duration_seconds, peak_modulation_pct, avg_modulation_pct
     FROM aggregated
     WHERE duration_seconds >= %s
     ORDER BY start_ts
@@ -133,8 +133,9 @@ async def query_heating_cycles(
 
     A cycle is a contiguous run with ``curburnpow > 0``; transitions are
     detected via ``LAG`` window. Returns one row per cycle with start, end,
-    duration, peak and average burner power. Cycles shorter than
-    ``min_duration_seconds`` are filtered (defaults to 60 s).
+    duration, and the peak and average burner modulation in percent
+    (``curburnpow``). Cycles shorter than ``min_duration_seconds`` are
+    filtered (defaults to 60 s).
     """
     if min_duration_seconds < 0:
         raise ValueError(f"invalid_min_duration_seconds: {min_duration_seconds}")

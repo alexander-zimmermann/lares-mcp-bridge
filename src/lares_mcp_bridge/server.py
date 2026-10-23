@@ -234,7 +234,8 @@ async def query_heating_cycles(
 
     A cycle is a contiguous run with ``curburnpow > 0`` over ``ems_esp``
     rows (``topic = 'boiler_data'``). Returns one row per cycle with start,
-    end, duration, peak and average burner power.
+    end, duration, and the peak and average burner modulation in percent
+    (``peak_modulation_pct``, ``avg_modulation_pct``).
     """
     return await domain_tools.query_heating_cycles(
         from_ts=from_ts,

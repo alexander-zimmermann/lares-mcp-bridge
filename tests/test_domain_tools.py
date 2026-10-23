@@ -61,8 +61,17 @@ async def test_heating_cycles_detects_runs(db_pool: None) -> None:
     assert out["cycle_count"] >= 30
     assert out["total_runtime_seconds"] >= 0
     cycle = out["cycles"][0]
-    expected = {"start_ts", "end_ts", "duration_seconds", "peak_power_kw", "avg_power_kw"}
+    expected = {
+        "start_ts",
+        "end_ts",
+        "duration_seconds",
+        "peak_modulation_pct",
+        "avg_modulation_pct",
+    }
     assert expected <= cycle.keys()
+    # `curburnpow` is the burner's modulation in percent, never a power in kW.
+    assert not {"peak_power_kw", "avg_power_kw"} & cycle.keys()
+    assert 0 < cycle["peak_modulation_pct"] <= 100
 
 
 async def test_heating_cycles_min_duration_filter(db_pool: None) -> None:
