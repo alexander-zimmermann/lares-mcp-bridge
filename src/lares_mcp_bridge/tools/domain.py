@@ -18,31 +18,37 @@ _AGGREGATE_HINT = "widen the bucket or shorten the time range"
 # query_energy_flow
 # =====================================================================
 
+# An hour's mean watts are its Wh; each inverter and meter adds its own share.
 _ENERGY_FLOW_SQL = sql.SQL(
     """
-    SELECT
-        coalesce(pf.bucket, m.bucket)                AS bucket,
-        pf.pv_production_avg                          AS pv_production_avg,
-        pf.grid_power_avg                             AS grid_power_avg,
-        pf.consumer_total_avg                         AS consumer_total_avg,
-        pf.battery_net_avg                            AS battery_net_avg,
-        m.evcharger_power_avg                         AS evcharger_power_avg
-    FROM (
-        SELECT bucket, avg(pv_production_avg)   AS pv_production_avg,
-                       avg(grid_power_avg)      AS grid_power_avg,
-                       avg(consumer_total_avg)  AS consumer_total_avg,
-                       avg(battery_net_avg)     AS battery_net_avg
+    WITH pf AS (
+        SELECT bucket,
+               sum(pv_production_avg)                    AS pv_production,
+               sum(grid_power_avg)                       AS grid_power,
+               sum(consumer_total_avg)                   AS consumer_total,
+               sum(battery_charge_avg)                   AS battery_charge,
+               sum(consumer_used_battery_production_avg) AS consumer_used_battery_production
         FROM solaredge_powerflow_1h
         WHERE bucket BETWEEN %s AND %s
         GROUP BY bucket
-    ) pf
-    FULL OUTER JOIN (
-        SELECT bucket, sum(power_total_avg) AS evcharger_power_avg
+    ),
+    m AS (
+        SELECT bucket, sum(power_total_avg) AS evcharger
         FROM warp_meter_1h
         WHERE bucket BETWEEN %s AND %s
         GROUP BY bucket
-    ) m USING (bucket)
-    ORDER BY bucket
+    )
+    SELECT
+        time_bucket(%s, bucket)                      AS bucket,
+        sum(pv_production) / 1000                    AS pv_production_kwh,
+        sum(grid_power) / 1000                       AS grid_power_kwh,
+        sum(consumer_total) / 1000                   AS consumer_total_kwh,
+        sum(battery_charge) / 1000                   AS battery_charge_kwh,
+        sum(consumer_used_battery_production) / 1000 AS consumer_used_battery_production_kwh,
+        sum(evcharger) / 1000                        AS evcharger_kwh
+    FROM pf FULL OUTER JOIN m USING (bucket)
+    GROUP BY 1
+    ORDER BY 1
     """
 )
 
@@ -52,12 +58,12 @@ async def query_energy_flow(
     to_ts: str | datetime,
     bucket: str = "1 hour",
 ) -> dict[str, Any]:
-    """Joined energy flow per bucket: PV / grid / consumer / battery / wallbox.
+    """Energy per bucket in kWh: PV / grid / consumer / battery / wallbox.
 
     Pulls from the hourly continuous aggregates ``solaredge_powerflow_1h`` and
-    ``warp_meter_1h`` (the only source of wallbox power) and FULL OUTER JOINs
-    them on ``bucket``. Buckets coarser than the underlying CAGG (``1 hour``)
-    are aggregated with ``avg()``.
+    ``warp_meter_1h`` (the only source of wallbox power), sums both inverters
+    and all wallbox meters per hour, and adds the hours up into ``bucket``. An
+    hour missing from the aggregates counts as no energy.
     """
     width = Interval.parse(bucket)
     if not width.at_least_hourly:
@@ -67,7 +73,7 @@ async def query_energy_flow(
         "query_energy_flow",
         "solaredge_powerflow_1h",
         _ENERGY_FLOW_SQL,
-        (from_ts, to_ts, from_ts, to_ts),
+        (from_ts, to_ts, from_ts, to_ts, str(width)),
         overflow="error",
         hint=_AGGREGATE_HINT,
     )
@@ -464,8 +470,8 @@ async def correlate_events(
 
     column_a = source_a["column"]
     column_b = source_b["column"]
-    a = await sources.resolve(source_a["table"], width)
-    b = await sources.resolve(source_b["table"], width)
+    a = await sources.resolve(source_a["table"])
+    b = await sources.resolve(source_b["table"])
 
     stmt = _CORRELATE_SQL_TEMPLATE.format(
         time_a=sql.Identifier(a.time_column),

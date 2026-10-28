@@ -194,8 +194,8 @@ async def query_timeseries(
     - ``aggregation``: ``avg`` | ``sum`` | ``min`` | ``max`` | ``count``.
     - ``bucket``: Postgres interval literal, e.g. ``'15 minutes'``, ``'1 hour'``,
       ``'1 day'``.
-    - When the bucket is at least one hour and a ``<table>_1h`` continuous
-      aggregate exists, the query is routed to the aggregate automatically.
+    - Reads ``table`` as named. For long ranges, name its ``<table>_1h``
+      continuous aggregate with that aggregate's columns (see ``get_schema``).
     - Result row count is capped (default 5000); exceed → error suggesting a
       coarser bucket.
     """
@@ -216,10 +216,11 @@ async def query_energy_flow(
     to_ts: str,
     bucket: str = "1 hour",
 ) -> dict[str, Any]:
-    """Joined PV / grid / consumer / battery / wallbox flow per bucket.
+    """Energy in kWh per bucket: PV / grid / consumer / battery / wallbox.
 
-    Pulls from the hourly continuous aggregates ``solaredge_powerflow_1h`` and
-    ``warp_meter_1h``. Bucket must be ``1 hour`` or coarser.
+    Sums the hourly continuous aggregates ``solaredge_powerflow_1h`` (both
+    inverters) and ``warp_meter_1h`` into each bucket. Bucket must be
+    ``1 hour`` or coarser.
     """
     return await domain_tools.query_energy_flow(from_ts=from_ts, to_ts=to_ts, bucket=bucket)
 

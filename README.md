@@ -11,7 +11,7 @@ Modern homes generate a lot of telemetry — KNX writes, smart-meter readings, h
 `lares-mcp-bridge` is the small, opinionated middle layer:
 
 - **Discoverable** — the LLM can list data sources and inspect schemas, including a sample of JSONB keys for raw payloads.
-- **Aggregation-aware** — when a query asks for hourly buckets or coarser, the server transparently routes to a TimescaleDB continuous aggregate, returning fewer rows and faster responses.
+- **Aggregation-aware** — `list_data_sources` lists the TimescaleDB continuous aggregates next to their hypertables, so a query over a long range can name the `*_1h` aggregate and read fewer rows, faster.
 - **Read-only by construction, with one exception** — the query tools connect with a Postgres role that has `SELECT` privileges only, and there is no `execute_sql` tool. The single write is `set_verdict`, which goes through a separate pool and a role whose whole privilege is one table (`episode_verdicts`) plus two columns of the ledger (`agent_runs.verdict`, `agent_runs.verdict_at`). Leave the write credentials unset and the server is read-only outright.
 - **Result-bounded** — every tool caps its output. The LLM cannot accidentally pull a year of 5-second sensor data into its context window.
 - **Pluggable** — the data source is just Postgres + TimescaleDB. There is nothing homelab-specific in the server itself; the schema discovery works on any TimescaleDB instance.
@@ -28,13 +28,13 @@ behind high-level questions:
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_data_sources()`                                                            | Enumerates all hypertables and continuous aggregates in the connected database, with their time range, under `sources`.                                                                                  |
 | `get_schema(table)`                                                              | Returns columns, types, and — for tables with a `JSONB` payload column — a sample of the most common JSON keys, so the LLM can construct sensible expressions like `raw->>'flow_temp'`. |
-| `query_timeseries(table, columns, from_ts, to_ts, aggregation, bucket, filters)` | Bucketed aggregate query (`avg`, `sum`, `min`, `max`, `count`). Automatically uses a `*_1h` continuous aggregate when the bucket is one hour or coarser and an aggregate exists.        |
+| `query_timeseries(table, columns, from_ts, to_ts, aggregation, bucket, filters)` | Bucketed aggregate query (`avg`, `sum`, `min`, `max`, `count`) over the table as named: a hypertable, or a `*_1h` continuous aggregate with that aggregate's columns.                 |
 
 **Domain**
 
 | Tool                                                  | What it does                                                                                                                                                                          |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query_energy_flow(from_ts, to_ts, bucket)`           | One row per bucket joining PV production, grid, household consumer, battery net, and wallbox power. Reads the hourly continuous aggregates; bucket must be `1 hour` or coarser.       |
+| `query_energy_flow(from_ts, to_ts, bucket)`           | One row per bucket with the energy in kWh of PV production, grid, household consumer, battery charge and discharge, and the wallbox. Sums both inverters and all wallbox meters from the hourly continuous aggregates; bucket must be `1 hour` or coarser. |
 | `query_heating_cycles(from_ts, to_ts, …)`             | Detects ON/OFF burner cycles from `ems_esp` (`topic = 'boiler_data'`) via `LAG` window functions. Returns one row per cycle with start, end, duration, and the peak and average burner modulation in percent (`peak_modulation_pct`, `avg_modulation_pct`). |
 | `query_room_climate(room, from_ts, to_ts, bucket)`    | Bucketed temp/humidity/etc. per GA name within a room. `room` is whitelisted against the imported KNX catalog so unknown rooms produce a precise error the LLM can self-correct.      |
 | `query_knx_events(from_ts, to_ts, room, ga, name, …)` | Raw event log against the `ga_catalog_view` view; supports room/ga/name/functions predicates with a default limit of 200.                                                            |

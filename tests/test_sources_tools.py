@@ -1,4 +1,4 @@
-"""Data-source tests against the seeded TimescaleDB container: listing, describing, routing."""
+"""Data-source tests against the seeded TimescaleDB container: listing, describing, resolving."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 import pytest
 
 from lares_mcp_bridge import db
-from lares_mcp_bridge.interval import Interval
 from lares_mcp_bridge.tools import sources
 
 pytestmark = pytest.mark.asyncio
@@ -71,19 +70,15 @@ async def test_get_schema_knx_hint_present(db_pool: None) -> None:
     assert "ga_catalog_view" in schema["hint"]
 
 
-async def test_resolve_routes_hourly_and_coarser_to_the_cagg(db_pool: None) -> None:
-    raw = await sources.resolve("knx", Interval.parse("5 minutes"))
+async def test_resolve_describes_the_named_source(db_pool: None) -> None:
+    raw = await sources.resolve("knx")
     assert (raw.name, raw.kind, raw.time_column) == ("knx", sources.KIND_HYPERTABLE, "time")
 
-    routed = await sources.resolve("knx", Interval.parse("120 minutes"))
-    assert (routed.name, routed.kind) == ("knx_1h", sources.KIND_CONTINUOUS_AGGREGATE)
-    assert routed.time_column == "bucket"
-
-    # Naming the aggregate directly is honoured at any width.
-    direct = await sources.resolve("knx_1h", Interval.parse("1 minute"))
-    assert direct.name == "knx_1h"
+    cagg = await sources.resolve("knx_1h")
+    assert (cagg.name, cagg.kind) == ("knx_1h", sources.KIND_CONTINUOUS_AGGREGATE)
+    assert cagg.time_column == "bucket"
 
 
 async def test_resolve_unknown_table_raises(db_pool: None) -> None:
     with pytest.raises(ValueError, match="unknown_table"):
-        await sources.resolve("does_not_exist", Interval.parse("1 hour"))
+        await sources.resolve("does_not_exist")
