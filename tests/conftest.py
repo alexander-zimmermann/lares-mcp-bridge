@@ -856,6 +856,8 @@ def settings(timescaledb_container: PostgresContainer) -> Settings:
         MCP_DB_WRITE_USERNAME="test",
         MCP_DB_WRITE_PASSWORD="test",
         MCP_GATEWAY_KEY=GATEWAY_KEY,
+        # The developer's own zone must not move the buckets the tests expect.
+        TZ="UTC",
     )
     return Settings()  # type: ignore[call-arg]
 

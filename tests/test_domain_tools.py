@@ -54,8 +54,11 @@ async def test_energy_flow_sums_a_day_into_one_row_of_kwh(db_pool: None) -> None
     assert row["evcharger_kwh"] == pytest.approx(36.0)
 
 
-async def test_energy_flow_cuts_days_in_the_configured_zone(settings: Settings) -> None:
-    await db.init_pool(settings.model_copy(update={"timezone": "Europe/Brussels"}))
+async def test_energy_flow_cuts_days_in_the_containers_zone(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TZ", "Europe/Brussels")
+    await db.init_pool(Settings())  # type: ignore[call-arg]
     try:
         out = await domain_tools.query_energy_flow(*_SEED_DAY, bucket="1 day")
     finally:
