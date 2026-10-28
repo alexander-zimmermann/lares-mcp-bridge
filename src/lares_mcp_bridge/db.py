@@ -32,6 +32,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, LiteralString
+from zoneinfo import ZoneInfo
 
 import psycopg
 from opentelemetry.instrumentation.utils import suppress_instrumentation
@@ -52,6 +53,7 @@ _Pool = AsyncConnectionPool[psycopg.AsyncConnection[DictRow]]
 _pool: _Pool | None = None
 _write_pool: _Pool | None = None
 _row_limit: int = 0
+_zone: ZoneInfo = ZoneInfo("UTC")
 # The read role's DSN, for the connections blocking_read() opens beside the pool.
 _read_dsn: str | None = None
 
@@ -108,10 +110,11 @@ async def _open_pool(dsn: str, min_size: int, max_size: int) -> _Pool:
 
 
 async def init_pool(settings: Settings) -> _Pool:
-    """Open the module-level read pool and take the row cap. Idempotent once open."""
-    global _pool, _row_limit, _read_dsn
+    """Open the module-level read pool and take the row cap and zone. Idempotent once open."""
+    global _pool, _row_limit, _zone, _read_dsn
     if _pool is not None:
         return _pool
+    _zone = ZoneInfo(settings.timezone)
     _pool = await _open_pool(settings.db_dsn, settings.db_pool_min, settings.db_pool_max)
     _row_limit = settings.query_row_limit
     _read_dsn = settings.db_dsn
@@ -123,6 +126,7 @@ async def init_pool(settings: Settings) -> _Pool:
         pool_min=settings.db_pool_min,
         pool_max=settings.db_pool_max,
         row_limit=_row_limit,
+        timezone=_zone.key,
     )
     return _pool
 
@@ -189,8 +193,16 @@ async def healthcheck() -> bool:
         return False
 
 
-def _serialize(row: dict[str, Any]) -> dict[str, Any]:
-    return {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in row.items()}
+def zone() -> str:
+    """The configured zone's IANA name, to bind as ``time_bucket``'s timezone."""
+    return _zone.key
+
+
+def _serialize(row: dict[str, Any], zone: ZoneInfo | None = None) -> dict[str, Any]:
+    return {
+        k: ((v.astimezone(zone) if zone else v).isoformat() if isinstance(v, datetime) else v)
+        for k, v in row.items()
+    }
 
 
 @contextmanager
@@ -203,12 +215,17 @@ def _measured(tool: str, table_used: str) -> Iterator[None]:
 
 
 async def _execute(
-    pool: _Pool, tool: str, table_used: str, stmt: Statement, params: Sequence[Any]
+    pool: _Pool,
+    tool: str,
+    table_used: str,
+    stmt: Statement,
+    params: Sequence[Any],
+    zone: ZoneInfo | None = None,
 ) -> list[dict[str, Any]]:
     with _measured(tool, table_used):
         async with pool.connection() as conn:
             rows = await (await conn.execute(stmt, params)).fetchall()
-    return [_serialize(r) for r in rows]
+    return [_serialize(r, zone) for r in rows]
 
 
 async def read(
@@ -220,6 +237,7 @@ async def read(
     overflow: Overflow,
     limit: int | None = None,
     hint: str = "",
+    local: bool = False,
 ) -> Result:
     """Run ``stmt`` on the read pool, bounded to ``limit`` rows.
 
@@ -228,7 +246,7 @@ async def read(
     ``limit`` is None. The caller names what an overflow means: ``"error"``
     raises ``row_limit_exceeded`` with ``hint`` appended, ``"truncate"`` returns
     the first ``limit`` rows with ``truncated`` set. A non-positive ``limit`` is
-    ``invalid_limit``.
+    ``invalid_limit``. ``local`` renders datetimes in the configured zone.
     """
     pool = _require_pool()
     effective = row_cap(limit)
@@ -236,7 +254,9 @@ async def read(
     bounded = sql.SQL("{stmt} LIMIT %s").format(
         stmt=sql.SQL(stmt) if isinstance(stmt, str) else stmt
     )
-    rows = await _execute(pool, tool, table_used, bounded, [*params, effective + 1])
+    rows = await _execute(
+        pool, tool, table_used, bounded, [*params, effective + 1], _zone if local else None
+    )
 
     truncated = len(rows) > effective
     if truncated and overflow == "error":

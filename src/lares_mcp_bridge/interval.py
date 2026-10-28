@@ -1,7 +1,7 @@
 """The bucket width the time-series tools accept: a Postgres interval literal.
 
 One parser for every place a tool takes a ``bucket`` or ``window``, so the
-"is this at least an hour" routing question and the window/bucket ratio are
+"is this whole hours" question and the window/bucket ratio are
 answered from the same reading of the text.
 """
 
@@ -47,9 +47,9 @@ class Interval:
         return self.count * _UNIT_SECONDS[self.unit]
 
     @property
-    def at_least_hourly(self) -> bool:
-        """True when the width covers an hour: the threshold for routing to a ``*_1h`` aggregate."""
-        return self.seconds >= 3600
+    def whole_hours(self) -> bool:
+        """True for a positive whole number of hours: what ``*_1h`` aggregates add up into."""
+        return self.seconds > 0 and self.seconds % 3600 == 0
 
     def __floordiv__(self, other: Interval) -> int:
         """How many ``other`` fit into this width, floored; 0 when ``other`` is wider."""

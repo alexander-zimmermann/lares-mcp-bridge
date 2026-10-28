@@ -45,8 +45,8 @@ async def query_timeseries(
     """Bucketed aggregate query against a hypertable or continuous aggregate.
 
     - ``aggregation`` is one of ``avg|sum|min|max|count``.
-    - When ``bucket`` is one hour or coarser AND a ``<table>_1h`` continuous
-      aggregate exists, the query is transparently routed to the CAGG.
+    - The query reads ``table`` as named; for long ranges name its ``<table>_1h``
+      continuous aggregate and that aggregate's columns.
     - The result is capped at ``MCP_QUERY_ROW_LIMIT`` rows; over-shoot returns
       an error suggesting a coarser bucket.
     - ``filters`` is a flat ``{column: value}`` dict translated to ``=`` predicates.
@@ -55,7 +55,7 @@ async def query_timeseries(
         raise ValueError(f"invalid_aggregation: {aggregation!r}")
     width = Interval.parse(bucket)
 
-    source = await sources.resolve(table, width)
+    source = await sources.resolve(table)
     schema = await sources.get_schema(source.name)
     valid_cols = {c["name"] for c in schema["columns"]}
     unknown = [c for c in columns if c not in valid_cols]
@@ -64,7 +64,9 @@ async def query_timeseries(
     flt = _validate_filters(filters, valid_cols)
 
     select_parts: list[sql.Composable] = [
-        sql.SQL("time_bucket(%s, {col}) AS bucket").format(col=sql.Identifier(source.time_column))
+        sql.SQL("time_bucket(%s, {col}, %s::text) AS bucket").format(
+            col=sql.Identifier(source.time_column)
+        )
     ]
     for c in columns:
         select_parts.append(
@@ -78,14 +80,13 @@ async def query_timeseries(
     where_parts: list[sql.Composable] = [
         sql.SQL("{col} BETWEEN %s AND %s").format(col=sql.Identifier(source.time_column))
     ]
-    params: list[Any] = [str(width), from_ts, to_ts]
+    params: list[Any] = [str(width), db.zone(), from_ts, to_ts]
     for k, v in flt.items():
         where_parts.append(sql.SQL("{col} = %s").format(col=sql.Identifier(k)))
         params.append(v)
 
-    stmt = sql.SQL(
-        "SELECT {selects} FROM {tbl} WHERE {where} GROUP BY bucket ORDER BY bucket"
-    ).format(
+    # Positional: on an aggregate, a bare `bucket` would group by its own hourly column.
+    stmt = sql.SQL("SELECT {selects} FROM {tbl} WHERE {where} GROUP BY 1 ORDER BY 1").format(
         selects=sql.SQL(", ").join(select_parts),
         tbl=sql.Identifier(source.schema, source.name),
         where=sql.SQL(" AND ").join(where_parts),
@@ -97,12 +98,11 @@ async def query_timeseries(
         params,
         overflow="error",
         hint="widen the bucket or shorten the time range",
+        local=True,
     )
 
     return {
-        "table_requested": table,
-        "table_used": source.name,
-        "kind_used": source.kind,
+        "table": source.name,
         "bucket": str(width),
         "aggregation": aggregation,
         "row_count": len(result.rows),

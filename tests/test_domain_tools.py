@@ -6,11 +6,16 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import domain as domain_tools
 
 # Use a generous future-window to ensure no rows match for "empty range" tests.
 _FAR_FUTURE = "2099-01-01T00:00:00Z"
 _FAR_FUTURE_END = "2099-12-31T00:00:00Z"
+
+# The seed's fixed day of steady inverter and wallbox power (see conftest).
+_SEED_DAY = ("2026-09-02T00:00:00Z", "2026-09-02T23:59:59Z")
 
 
 def _now_window() -> tuple[str, str]:
@@ -32,8 +37,37 @@ async def test_energy_flow_happy_path(db_pool: None) -> None:
     assert out["row_count"] > 0
     sample = out["rows"][0]
     assert "bucket" in sample
-    assert "pv_production_avg" in sample
-    assert "evcharger_power_avg" in sample
+    assert "pv_production_kwh" in sample
+    assert "evcharger_kwh" in sample
+
+
+async def test_energy_flow_sums_a_day_into_one_row_of_kwh(db_pool: None) -> None:
+    out = await domain_tools.query_energy_flow(*_SEED_DAY, bucket="1 day")
+    assert out["row_count"] == 1
+    (row,) = out["rows"]
+    assert datetime.fromisoformat(row["bucket"]) == datetime(2026, 9, 2, tzinfo=UTC)
+    # Both inverters count: 24 h of 1000 W and 500 W.
+    assert row["pv_production_kwh"] == pytest.approx(36.0)
+    assert row["consumer_total_kwh"] == pytest.approx(31.2)
+    assert row["battery_charge_kwh"] == pytest.approx(0.0)
+    # Meter 1 reports the same hours without power; only meter 0's 10 h of 3600 W count.
+    assert row["evcharger_kwh"] == pytest.approx(36.0)
+
+
+async def test_energy_flow_cuts_days_in_the_containers_zone(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TZ", "Europe/Brussels")
+    await db.init_pool(Settings())  # type: ignore[call-arg]
+    try:
+        out = await domain_tools.query_energy_flow(*_SEED_DAY, bucket="1 day")
+    finally:
+        await db.close_pool()
+    # Brussels is two hours ahead in September: 22:00 and 23:00 UTC are the 3rd.
+    assert [(r["bucket"], r["pv_production_kwh"]) for r in out["rows"]] == [
+        ("2026-09-02T00:00:00+02:00", pytest.approx(33.0)),
+        ("2026-09-03T00:00:00+02:00", pytest.approx(3.0)),
+    ]
 
 
 async def test_energy_flow_empty_range(db_pool: None) -> None:
@@ -41,10 +75,11 @@ async def test_energy_flow_empty_range(db_pool: None) -> None:
     assert out["row_count"] == 0
 
 
-async def test_energy_flow_rejects_sub_hour_bucket(db_pool: None) -> None:
+@pytest.mark.parametrize("bucket", ["15 minutes", "90 minutes"])
+async def test_energy_flow_rejects_a_bucket_of_split_hours(db_pool: None, bucket: str) -> None:
     f, t = _now_window()
     with pytest.raises(ValueError, match="invalid_bucket"):
-        await domain_tools.query_energy_flow(f, t, bucket="15 minutes")
+        await domain_tools.query_energy_flow(f, t, bucket=bucket)
 
 
 # =====================================================================
@@ -201,9 +236,8 @@ async def test_knx_events_rejects_zero_limit(db_pool: None) -> None:
 async def test_correlate_events_finds_pv_wallbox_lag(db_pool: None) -> None:
     f, t = _now_window()
     out = await domain_tools.correlate_events(
-        # Bucket >= 1h auto-routes to *_1h CAGGs, so use CAGG-side column names.
-        source_a={"table": "solaredge_powerflow", "column": "pv_production_avg"},
-        source_b={"table": "warp_meter", "column": "power_total_avg"},
+        source_a={"table": "solaredge_powerflow_1h", "column": "pv_production_avg"},
+        source_b={"table": "warp_meter_1h", "column": "power_total_avg"},
         from_ts=f,
         to_ts=t,
         window="3 hours",
@@ -222,8 +256,8 @@ async def test_correlate_events_rejects_window_smaller_than_bucket(db_pool: None
     f, t = _now_window()
     with pytest.raises(ValueError, match="window must be larger than bucket"):
         await domain_tools.correlate_events(
-            source_a={"table": "solaredge_powerflow", "column": "pv_production_avg"},
-            source_b={"table": "warp_meter", "column": "power_total_avg"},
+            source_a={"table": "solaredge_powerflow_1h", "column": "pv_production_avg"},
+            source_b={"table": "warp_meter_1h", "column": "power_total_avg"},
             from_ts=f,
             to_ts=t,
             window="1 hour",
@@ -236,7 +270,7 @@ async def test_correlate_events_unknown_table(db_pool: None) -> None:
     with pytest.raises(ValueError, match="unknown_table"):
         await domain_tools.correlate_events(
             source_a={"table": "does_not_exist", "column": "x"},
-            source_b={"table": "warp_meter", "column": "power_total_avg"},
+            source_b={"table": "warp_meter_1h", "column": "power_total_avg"},
             from_ts=f,
             to_ts=t,
             window="3 hours",

@@ -1,9 +1,9 @@
-"""The data sources: which hypertables and continuous aggregates exist, what
-they look like, and which of them answers a request at a given bucket width.
+"""The data sources: which hypertables and continuous aggregates exist and
+what they look like.
 
 ``list_data_sources`` and ``get_schema`` are served to the LLM as tools;
-``resolve`` is what the other tools call to route a coarse bucket to the
-``*_1h`` aggregate instead of the raw hypertable.
+``resolve`` is what the other tools call to check a named source and find
+its time column.
 """
 
 from __future__ import annotations
@@ -15,15 +15,14 @@ from cachetools import TTLCache
 from psycopg import sql
 
 from .. import db
-from ..interval import Interval
 
 KIND_HYPERTABLE = "hypertable"
 KIND_CONTINUOUS_AGGREGATE = "continuous_aggregate"
 
-# Every tool call funnels through list_data_sources() for validation and CAGG
-# routing. The catalog walk reads metadata only, but it is still 2 + 3N small
-# queries; hypertables and CAGGs change rarely, so a short single-entry TTL
-# cache removes the repeat cost, and new tables show up after one TTL period.
+# Every tool call funnels through list_data_sources() for validation. The
+# catalog walk reads metadata only, but it is still 2 + 3N small queries;
+# hypertables and CAGGs change rarely, so a short single-entry TTL cache
+# removes the repeat cost, and new tables show up after one TTL period.
 _SOURCES_CACHE_TTL_SECONDS = 60
 # Alias pins the key/value types for both mypy and Pyright — the cachetools
 # stubs cannot infer them from an otherwise-empty constructor.
@@ -41,7 +40,7 @@ def invalidate_cache() -> None:
 
 @dataclass(frozen=True)
 class Source:
-    """The table a query will actually run against, after CAGG routing."""
+    """The table a query runs against: where it lives and its time column."""
 
     name: str
     schema: str
@@ -185,25 +184,17 @@ async def list_data_sources() -> list[dict[str, Any]]:
     return out
 
 
-async def resolve(table: str, bucket: Interval) -> Source:
-    """The source a query at ``bucket`` width runs against.
+async def resolve(table: str) -> Source:
+    """The source named ``table``, exactly as named.
 
-    A request for a hypertable at an hourly or coarser bucket is routed to its
-    ``<table>_1h`` continuous aggregate when one exists. Unknown tables and
-    sources without a detectable time column are ``ValueError``.
+    Unknown tables and sources without a detectable time column are
+    ``ValueError``.
     """
     by_name = {s["name"]: s for s in await list_data_sources()}
     if table not in by_name:
         raise ValueError(f"unknown_table: {table}")
 
     chosen = by_name[table]
-    if (
-        chosen["kind"] != KIND_CONTINUOUS_AGGREGATE
-        and bucket.at_least_hourly
-        and (cagg := by_name.get(f"{table}_1h"))
-    ):
-        chosen = cagg
-
     if chosen["time_column"] is None:
         raise ValueError(f"no_time_column_detected: {chosen['name']}")
     return Source(

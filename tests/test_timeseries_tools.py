@@ -1,4 +1,4 @@
-"""query_timeseries tests: validation, CAGG routing, row cap."""
+"""query_timeseries tests: validation, bucketing, row cap."""
 
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ def _now_window() -> tuple[str, str]:
     return (now - timedelta(hours=4)).isoformat(), (now + timedelta(minutes=1)).isoformat()
 
 
-async def test_query_minute_bucket_uses_raw_hypertable(db_pool: None) -> None:
+@pytest.mark.parametrize("bucket", ["5 minutes", "1 hour", "120 minutes"])
+async def test_query_reads_the_named_table_at_any_width(db_pool: None, bucket: str) -> None:
     from_ts, to_ts = _now_window()
     result = await ts.query_timeseries(
         table="knx",
@@ -26,25 +27,48 @@ async def test_query_minute_bucket_uses_raw_hypertable(db_pool: None) -> None:
         from_ts=from_ts,
         to_ts=to_ts,
         aggregation="avg",
-        bucket="5 minutes",
+        bucket=bucket,
     )
-    assert result["table_used"] == "knx"
-    assert result["kind_used"] == "hypertable"
+    assert result["table"] == "knx"
+    assert result["bucket"] == bucket
     assert result["row_count"] > 0
 
 
-async def test_query_hour_bucket_routes_to_cagg(db_pool: None) -> None:
-    from_ts, to_ts = _now_window()
+async def test_query_day_bucket_on_an_aggregate_is_one_row_per_day(db_pool: None) -> None:
+    # The aggregate's own hourly column is also called `bucket`; the day must win.
     result = await ts.query_timeseries(
-        table="knx",
-        columns=["value"],
-        from_ts=from_ts,
-        to_ts=to_ts,
-        aggregation="avg",
-        bucket="1 hour",
+        table="solaredge_powerflow_1h",
+        columns=["pv_production_avg"],
+        from_ts="2026-09-02T00:00:00Z",
+        to_ts="2026-09-02T23:59:59Z",
+        bucket="1 day",
+        filters={"inverter_id": 1},
     )
-    assert result["table_used"] == "knx_1h"
-    assert result["kind_used"] == "continuous_aggregate"
+    assert result["rows"] == [
+        {"bucket": "2026-09-02T00:00:00+00:00", "pv_production_avg_avg": 1000.0}
+    ]
+
+
+async def test_query_day_bucket_starts_at_midnight_in_the_configured_zone(
+    settings: Settings,
+) -> None:
+    await db.init_pool(settings.model_copy(update={"timezone": "Europe/Brussels"}))
+    try:
+        result = await ts.query_timeseries(
+            table="solaredge_powerflow_1h",
+            columns=["sample_count"],
+            from_ts="2026-09-02T00:00:00Z",
+            to_ts="2026-09-02T23:59:59Z",
+            aggregation="sum",
+            bucket="1 day",
+            filters={"inverter_id": 1},
+        )
+    finally:
+        await db.close_pool()
+    assert [(r["bucket"], r["sample_count_sum"]) for r in result["rows"]] == [
+        ("2026-09-02T00:00:00+02:00", 22),
+        ("2026-09-03T00:00:00+02:00", 2),
+    ]
 
 
 async def test_query_unknown_table_rejected(db_pool: None) -> None:
@@ -107,12 +131,3 @@ async def test_query_row_limit_enforced(settings: Settings) -> None:
             )
     finally:
         await db.close_pool()
-
-
-async def test_query_two_hour_bucket_routes_to_cagg_by_width(db_pool: None) -> None:
-    from_ts, to_ts = _now_window()
-    result = await ts.query_timeseries(
-        table="knx", columns=["value"], from_ts=from_ts, to_ts=to_ts, bucket="120 minutes"
-    )
-    assert result["table_used"] == "knx_1h"
-    assert result["bucket"] == "120 minutes"

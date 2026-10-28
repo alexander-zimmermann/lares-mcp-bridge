@@ -42,6 +42,9 @@ class Settings(BaseSettings):
 
     # Query limits: cap on rows returned by the time-series tools.
     query_row_limit: int = 5000
+    # The zone the bucketing tools cut days in and show their buckets in: the
+    # container's own TZ, an IANA name such as Europe/Berlin.
+    timezone: str = Field(default="UTC", validation_alias="TZ")
 
     # Metrics: port of the Prometheus /metrics HTTP server.
     metrics_port: int = 9090

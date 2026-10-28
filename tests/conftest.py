@@ -104,7 +104,8 @@ def _seed(conn: psycopg.Connection) -> None:
             knx_sub    SMALLINT,
             dpt   TEXT,
             value DOUBLE PRECISION,
-            raw   JSONB
+            raw   JSONB,
+            knx_name TEXT
         )
         """
     )
@@ -160,6 +161,8 @@ def _seed(conn: psycopg.Connection) -> None:
             consumer_total   DOUBLE PRECISION,
             battery_charge   DOUBLE PRECISION,
             battery_discharge DOUBLE PRECISION,
+            consumer_used_pv_production      DOUBLE PRECISION,
+            consumer_used_battery_production DOUBLE PRECISION,
             PRIMARY KEY (time, inverter_id)
         )
         """
@@ -177,7 +180,11 @@ def _seed(conn: psycopg.Connection) -> None:
             power_l2  DOUBLE PRECISION,
             power_l3  DOUBLE PRECISION,
             voltage_l1 DOUBLE PRECISION,
-            current_l1 DOUBLE PRECISION
+            current_l1 DOUBLE PRECISION,
+            voltage_l2 DOUBLE PRECISION,
+            voltage_l3 DOUBLE PRECISION,
+            current_l2 DOUBLE PRECISION,
+            current_l3 DOUBLE PRECISION
         )
         """
     )
@@ -329,6 +336,31 @@ def _seed(conn: psycopg.Connection) -> None:
             230,
             GREATEST(0, 6 * sin(radians(((i % 24) - 8) * 15)))
         FROM generate_series(0, 168) AS i
+        """
+    )
+
+    # A fixed day for exact energy sums: two inverters at a steady 1000 W and
+    # 500 W all day, the wallbox's meter 0 at 3600 W for its first ten hours,
+    # and meter 1 reporting the same hours without phase values.
+    conn.execute(
+        """
+        INSERT INTO solaredge_powerflow (time, inverter_id, pv_production, grid_power,
+                                         consumer_total, battery_charge,
+                                         consumer_used_battery_production)
+        SELECT '2026-09-02T00:30:00+00:00'::timestamptz + (h || ' hours')::interval,
+               inv.id, inv.watts, 0, inv.watts - 100, 0, 0
+        FROM generate_series(0, 23) AS h,
+             (VALUES (1::smallint, 1000), (2::smallint, 500)) AS inv (id, watts)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO warp_meter (time, sub_topic, meter_id, power_l1, power_l2, power_l3)
+        SELECT '2026-09-02T00:30:00+00:00'::timestamptz + (h || ' hours')::interval,
+               m.topic, m.id, m.watts, m.watts, m.watts
+        FROM generate_series(0, 9) AS h,
+             (VALUES ('warp.meters.0.values', 0::smallint, 1200),
+                     ('warp.meters.1.update', 1::smallint, NULL)) AS m (topic, id, watts)
         """
     )
 
@@ -753,61 +785,58 @@ ORDER BY episode_id, r.created_at DESC;
 
 
 # LiteralString so the tuple elements stay assignable to psycopg's Query type.
+# Verbatim from bootstrap.sql: the tools read these columns by name, so a
+# hand-written stand-in hides every drift between the bridge and the cluster.
 _CAGGS: list[tuple[LiteralString, LiteralString]] = [
     (
         """
-        CREATE MATERIALIZED VIEW knx_1h
-        WITH (timescaledb.continuous) AS
-        SELECT
-            time_bucket('1 hour', time) AS bucket,
-            ga,
-            avg(value)  AS value,
-            min(value)  AS min_value,
-            max(value)  AS max_value,
-            count(*)    AS samples
-        FROM knx
-        GROUP BY bucket, ga
-        WITH NO DATA
+CREATE MATERIALIZED VIEW knx_1h
+WITH (timescaledb.continuous, timescaledb.materialized_only = true) AS
+SELECT time_bucket('1 hour', time) AS bucket, ga, knx_name,
+       first(value, time) AS first_value, last(value, time) AS last_value,
+       avg(value) AS avg_value, min(value) AS min_value, max(value) AS max_value,
+       count(*) AS sample_count
+FROM knx GROUP BY bucket, ga, knx_name WITH NO DATA
         """,
         "CALL refresh_continuous_aggregate('knx_1h', NULL, NULL)",
     ),
     (
         """
-        CREATE MATERIALIZED VIEW solaredge_powerflow_1h
-        WITH (timescaledb.continuous, timescaledb.materialized_only = true) AS
-        SELECT
-            time_bucket('1 hour', time) AS bucket,
-            inverter_id,
-            avg(pv_production)              AS pv_production_avg,
-            max(pv_production)              AS pv_production_max,
-            avg(grid_power)                 AS grid_power_avg,
-            avg(grid_consumption)           AS grid_consumption_avg,
-            avg(grid_delivery)              AS grid_delivery_avg,
-            avg(consumer_total)             AS consumer_total_avg,
-            avg(battery_charge - battery_discharge) AS battery_net_avg,
-            count(*)                         AS sample_count
-        FROM solaredge_powerflow
-        GROUP BY bucket, inverter_id
-        WITH NO DATA
+CREATE MATERIALIZED VIEW solaredge_powerflow_1h
+WITH (timescaledb.continuous, timescaledb.materialized_only = true) AS
+SELECT time_bucket('1 hour', time) AS bucket, inverter_id,
+       avg(pv_production) AS pv_production_avg,
+       max(pv_production) AS pv_production_max,
+       avg(grid_power) AS grid_power_avg,
+       avg(grid_consumption) AS grid_consumption_avg,
+       avg(grid_delivery) AS grid_delivery_avg,
+       avg(consumer_used_pv_production) AS consumer_used_pv_production_avg,
+       avg(battery_charge) AS battery_charge_avg,
+       avg(consumer_used_battery_production) AS consumer_used_battery_production_avg,
+       avg(consumer_total) AS consumer_total_avg,
+       max(consumer_total) AS consumer_total_max,
+       sum(consumer_total) AS consumer_total_sum,
+       count(*) AS sample_count
+FROM solaredge_powerflow GROUP BY bucket, inverter_id WITH NO DATA
         """,
         "CALL refresh_continuous_aggregate('solaredge_powerflow_1h', NULL, NULL)",
     ),
     (
         """
-        CREATE MATERIALIZED VIEW warp_meter_1h
-        WITH (timescaledb.continuous, timescaledb.materialized_only = true) AS
-        SELECT
-            time_bucket('1 hour', time) AS bucket,
-            meter_id,
-            avg(power_l1 + power_l2 + power_l3) AS power_total_avg,
-            max(power_l1 + power_l2 + power_l3) AS power_total_max,
-            avg(voltage_l1)                     AS voltage_l1_avg,
-            avg(current_l1)                     AS current_l1_avg,
-            count(*)                            AS sample_count
-        FROM warp_meter
-        WHERE meter_id IS NOT NULL
-        GROUP BY bucket, meter_id
-        WITH NO DATA
+CREATE MATERIALIZED VIEW warp_meter_1h
+WITH (timescaledb.continuous, timescaledb.materialized_only = true) AS
+SELECT time_bucket('1 hour', time) AS bucket, meter_id,
+       avg(power_l1 + power_l2 + power_l3) AS power_total_avg,
+       max(power_l1 + power_l2 + power_l3) AS power_total_max,
+       avg(voltage_l1) AS voltage_l1_avg,
+       avg(voltage_l2) AS voltage_l2_avg,
+       avg(voltage_l3) AS voltage_l3_avg,
+       avg(current_l1) AS current_l1_avg,
+       avg(current_l2) AS current_l2_avg,
+       avg(current_l3) AS current_l3_avg,
+       count(*) AS sample_count
+FROM warp_meter WHERE meter_id IS NOT NULL
+GROUP BY bucket, meter_id WITH NO DATA
         """,
         "CALL refresh_continuous_aggregate('warp_meter_1h', NULL, NULL)",
     ),
@@ -827,6 +856,8 @@ def settings(timescaledb_container: PostgresContainer) -> Settings:
         MCP_DB_WRITE_USERNAME="test",
         MCP_DB_WRITE_PASSWORD="test",
         MCP_GATEWAY_KEY=GATEWAY_KEY,
+        # The developer's own zone must not move the buckets the tests expect.
+        TZ="UTC",
     )
     return Settings()  # type: ignore[call-arg]
 
