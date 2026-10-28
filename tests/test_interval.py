@@ -51,10 +51,12 @@ def test_seconds_and_ratio() -> None:
         ("1 day", True),
         ("1 month", True),
         ("120 minutes", True),
+        ("90 minutes", False),
         ("59 minutes", False),
         ("3600 seconds", True),
         ("5 minutes", False),
+        ("0 hours", False),
     ],
 )
-def test_at_least_hourly_is_about_width_not_unit(text: str, hourly: bool) -> None:
-    assert Interval.parse(text).at_least_hourly is hourly
+def test_whole_hours_is_about_width_not_unit(text: str, hourly: bool) -> None:
+    assert Interval.parse(text).whole_hours is hourly

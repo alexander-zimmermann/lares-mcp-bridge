@@ -57,10 +57,11 @@ async def test_energy_flow_empty_range(db_pool: None) -> None:
     assert out["row_count"] == 0
 
 
-async def test_energy_flow_rejects_sub_hour_bucket(db_pool: None) -> None:
+@pytest.mark.parametrize("bucket", ["15 minutes", "90 minutes"])
+async def test_energy_flow_rejects_a_bucket_of_split_hours(db_pool: None, bucket: str) -> None:
     f, t = _now_window()
     with pytest.raises(ValueError, match="invalid_bucket"):
-        await domain_tools.query_energy_flow(f, t, bucket="15 minutes")
+        await domain_tools.query_energy_flow(f, t, bucket=bucket)
 
 
 # =====================================================================

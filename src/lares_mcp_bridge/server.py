@@ -219,8 +219,8 @@ async def query_energy_flow(
     """Energy in kWh per bucket: PV / grid / consumer / battery / wallbox.
 
     Sums the hourly continuous aggregates ``solaredge_powerflow_1h`` (both
-    inverters) and ``warp_meter_1h`` into each bucket. Bucket must be
-    ``1 hour`` or coarser.
+    inverters) and ``warp_meter_1h`` into each bucket. Bucket must be whole
+    hours: ``1 hour``, ``3 hours``, ``1 day``, …
     """
     return await domain_tools.query_energy_flow(from_ts=from_ts, to_ts=to_ts, bucket=bucket)
 

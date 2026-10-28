@@ -66,8 +66,8 @@ async def query_energy_flow(
     hour missing from the aggregates counts as no energy.
     """
     width = Interval.parse(bucket)
-    if not width.at_least_hourly:
-        raise ValueError(f"invalid_bucket: {bucket!r} — energy_flow uses 1h CAGGs, need >=1 hour")
+    if not width.whole_hours:
+        raise ValueError(f"invalid_bucket: {bucket!r} — energy_flow adds up 1h CAGGs, need whole hours")
 
     result = await db.read(
         "query_energy_flow",
