@@ -64,7 +64,9 @@ async def query_timeseries(
     flt = _validate_filters(filters, valid_cols)
 
     select_parts: list[sql.Composable] = [
-        sql.SQL("time_bucket(%s, {col}) AS bucket").format(col=sql.Identifier(source.time_column))
+        sql.SQL("time_bucket(%s, {col}, %s::text) AS bucket").format(
+            col=sql.Identifier(source.time_column)
+        )
     ]
     for c in columns:
         select_parts.append(
@@ -78,7 +80,7 @@ async def query_timeseries(
     where_parts: list[sql.Composable] = [
         sql.SQL("{col} BETWEEN %s AND %s").format(col=sql.Identifier(source.time_column))
     ]
-    params: list[Any] = [str(width), from_ts, to_ts]
+    params: list[Any] = [str(width), db.zone(), from_ts, to_ts]
     for k, v in flt.items():
         where_parts.append(sql.SQL("{col} = %s").format(col=sql.Identifier(k)))
         params.append(v)
@@ -96,6 +98,7 @@ async def query_timeseries(
         params,
         overflow="error",
         hint="widen the bucket or shorten the time range",
+        local=True,
     )
 
     return {

@@ -201,6 +201,7 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_DB_POOL_MIN`                    | `2`                         | psycopg pool min size                                          |
 | `MCP_DB_POOL_MAX`                    | `10`                        | psycopg pool max size                                          |
 | `MCP_QUERY_ROW_LIMIT`                | `5000`                      | Hard cap on rows returned by the query tools                   |
+| `MCP_TIMEZONE`                       | `UTC`                       | IANA zone the bucketing tools cut days in and show buckets in  |
 | `MCP_METRICS_PORT`                   | `9090`                      | Prometheus `/metrics` port                                     |
 | `MCP_GATEWAY_KEY`                    | _required_                  | The key the gateway calls with, at least 32 characters         |
 | `MCP_GATEWAY_KEY_FILE`               | —                           | Read the gateway key from a mounted file (overrides `MCP_GATEWAY_KEY`) |

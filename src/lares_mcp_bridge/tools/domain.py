@@ -39,7 +39,7 @@ _ENERGY_FLOW_SQL = sql.SQL(
         GROUP BY bucket
     )
     SELECT
-        time_bucket(%s, bucket)                      AS bucket,
+        time_bucket(%s, bucket, %s::text)            AS bucket,
         sum(pv_production) / 1000                    AS pv_production_kwh,
         sum(grid_power) / 1000                       AS grid_power_kwh,
         sum(consumer_total) / 1000                   AS consumer_total_kwh,
@@ -67,15 +67,18 @@ async def query_energy_flow(
     """
     width = Interval.parse(bucket)
     if not width.whole_hours:
-        raise ValueError(f"invalid_bucket: {bucket!r} — energy_flow adds up 1h CAGGs, need whole hours")
+        raise ValueError(
+            f"invalid_bucket: {bucket!r} — energy_flow adds up 1h CAGGs, need whole hours"
+        )
 
     result = await db.read(
         "query_energy_flow",
         "solaredge_powerflow_1h",
         _ENERGY_FLOW_SQL,
-        (from_ts, to_ts, from_ts, to_ts, str(width)),
+        (from_ts, to_ts, from_ts, to_ts, str(width), db.zone()),
         overflow="error",
         hint=_AGGREGATE_HINT,
+        local=True,
     )
     return {
         "bucket": str(width),
@@ -212,7 +215,7 @@ async def query_room_climate(
         sql.SQL("room = %s"),
         sql.SQL("time BETWEEN %s AND %s"),
     ]
-    params: list[Any] = [str(width), room, from_ts, to_ts]
+    params: list[Any] = [str(width), db.zone(), room, from_ts, to_ts]
     if functions:
         where_parts.append(sql.SQL("function = ANY(%s)"))
         params.append(list(functions))
@@ -220,7 +223,7 @@ async def query_room_climate(
     stmt = sql.SQL(
         """
         SELECT
-            time_bucket(%s, time) AS bucket,
+            time_bucket(%s, time, %s::text) AS bucket,
             ga_name,
             AVG(value)::float     AS value_avg
         FROM ga_catalog_view
@@ -236,6 +239,7 @@ async def query_room_climate(
         params,
         overflow="error",
         hint=_AGGREGATE_HINT,
+        local=True,
     )
     return {
         "room": room,
@@ -416,13 +420,13 @@ async def query_unifi_events(
 _CORRELATE_SQL_TEMPLATE = sql.SQL(
     """
     WITH a AS (
-        SELECT time_bucket(%s, {time_a}) AS bts, AVG({col_a})::float AS v
+        SELECT time_bucket(%s, {time_a}, %s::text) AS bts, AVG({col_a})::float AS v
         FROM {tbl_a}
         WHERE {time_a} BETWEEN %s AND %s
         GROUP BY bts
     ),
     b AS (
-        SELECT time_bucket(%s, {time_b}) AS bts, AVG({col_b})::float AS v
+        SELECT time_bucket(%s, {time_b}, %s::text) AS bts, AVG({col_b})::float AS v
         FROM {tbl_b}
         WHERE {time_b} BETWEEN %s AND %s
         GROUP BY bts
@@ -483,9 +487,11 @@ async def correlate_events(
     )
     params = (
         str(width),
+        db.zone(),
         from_ts,
         to_ts,
         str(width),
+        db.zone(),
         from_ts,
         to_ts,
         n_lags,

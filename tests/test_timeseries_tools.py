@@ -49,6 +49,28 @@ async def test_query_day_bucket_on_an_aggregate_is_one_row_per_day(db_pool: None
     ]
 
 
+async def test_query_day_bucket_starts_at_midnight_in_the_configured_zone(
+    settings: Settings,
+) -> None:
+    await db.init_pool(settings.model_copy(update={"timezone": "Europe/Brussels"}))
+    try:
+        result = await ts.query_timeseries(
+            table="solaredge_powerflow_1h",
+            columns=["sample_count"],
+            from_ts="2026-09-02T00:00:00Z",
+            to_ts="2026-09-02T23:59:59Z",
+            aggregation="sum",
+            bucket="1 day",
+            filters={"inverter_id": 1},
+        )
+    finally:
+        await db.close_pool()
+    assert [(r["bucket"], r["sample_count_sum"]) for r in result["rows"]] == [
+        ("2026-09-02T00:00:00+02:00", 22),
+        ("2026-09-03T00:00:00+02:00", 2),
+    ]
+
+
 async def test_query_unknown_table_rejected(db_pool: None) -> None:
     from_ts, to_ts = _now_window()
     with pytest.raises(ValueError, match="unknown_table"):

@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from lares_mcp_bridge import db
+from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import domain as domain_tools
 
 # Use a generous future-window to ensure no rows match for "empty range" tests.
@@ -50,6 +52,19 @@ async def test_energy_flow_sums_a_day_into_one_row_of_kwh(db_pool: None) -> None
     assert row["battery_charge_kwh"] == pytest.approx(0.0)
     # Meter 1 reports the same hours without power; only meter 0's 10 h of 3600 W count.
     assert row["evcharger_kwh"] == pytest.approx(36.0)
+
+
+async def test_energy_flow_cuts_days_in_the_configured_zone(settings: Settings) -> None:
+    await db.init_pool(settings.model_copy(update={"timezone": "Europe/Brussels"}))
+    try:
+        out = await domain_tools.query_energy_flow(*_SEED_DAY, bucket="1 day")
+    finally:
+        await db.close_pool()
+    # Brussels is two hours ahead in September: 22:00 and 23:00 UTC are the 3rd.
+    assert [(r["bucket"], r["pv_production_kwh"]) for r in out["rows"]] == [
+        ("2026-09-02T00:00:00+02:00", pytest.approx(33.0)),
+        ("2026-09-03T00:00:00+02:00", pytest.approx(3.0)),
+    ]
 
 
 async def test_energy_flow_empty_range(db_pool: None) -> None:
