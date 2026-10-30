@@ -19,19 +19,19 @@ dependencies = [
     "fastmcp>=4.1.4",
     "uvicorn[standard]>=0.54.0",
     "psycopg[binary,pool]>=3.3.6",
-    "pydantic>=2.14.1",
+    "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "structlog>=26.1.0",
     "httpx>=0.28.1",
-    "cachetools>=7.2.6",
+    "cachetools>=7.2.7",
     "prometheus-client>=0.26.0",
     "nats-py[nkeys]>=2.16.0",
     "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.46.0",
-    "boto3>=1.43.120",
-    "opentelemetry-sdk>=1.45.1",
-    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
-    "opentelemetry-instrumentation-psycopg>=0.66b1",
-    "opentelemetry-instrumentation-httpx>=0.66b1",
+    "boto3>=1.43.122",
+    "opentelemetry-sdk>=1.45.2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-psycopg>=0.66b2",
+    "opentelemetry-instrumentation-httpx>=0.66b2",
 ]
 
 [project.optional-dependencies]
@@ -42,10 +42,10 @@ dev = [
     "testcontainers[postgres]>=4.15.0",
     "respx>=0.23.1",
     "ruff>=0.17.3",
-    "mypy>=2.4.0",
-    "types-PyYAML>=6.0.12.20260906",
+    "mypy>=2.4.1",
+    "types-PyYAML>=6.0.12.20261030",
     "pre-commit>=4.7.0",
-    "boto3-stubs[s3]>=1.43.120",
+    "boto3-stubs[s3]>=1.43.122",
 ]
 [project.scripts]
 lares-mcp-bridge = "lares_mcp_bridge.__main__:main"
