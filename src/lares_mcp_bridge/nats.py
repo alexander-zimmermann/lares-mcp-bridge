@@ -44,6 +44,23 @@ class StateMsg:
     ts: datetime  # tz-aware UTC; JetStream stored time (or receipt time for tails)
 
 
+async def _on_disconnect() -> None:
+    log.warning("nats_disconnected")
+
+
+async def _on_reconnect() -> None:
+    log.info("nats_reconnected")
+
+
+async def _on_closed() -> None:
+    log.warning("nats_closed")
+
+
+async def _on_error(err: Exception) -> None:
+    # nats.py's own callback would log a traceback per reconnect attempt
+    log.warning("nats_error", error=str(err))
+
+
 async def init(settings: Settings) -> None:
     """Open the shared connection. Idempotent — a no-op once connected."""
     global _nc, _js
@@ -51,9 +68,14 @@ async def init(settings: Settings) -> None:
         return
     kwargs: dict[str, Any] = {
         "servers": settings.nats_servers_list,
+        "name": "lares-mcp-bridge",
         "max_reconnect_attempts": -1,
         "reconnect_time_wait": 2,
         "connect_timeout": 10,
+        "disconnected_cb": _on_disconnect,
+        "reconnected_cb": _on_reconnect,
+        "closed_cb": _on_closed,
+        "error_cb": _on_error,
     }
     if settings.nats_nkey_seed_file:
         kwargs["nkeys_seed"] = settings.nats_nkey_seed_file
