@@ -27,7 +27,7 @@ dependencies = [
     "prometheus-client>=0.26.0",
     "nats-py[nkeys]>=2.16.0",
     "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.46.0",
-    "boto3>=1.43.122",
+    "boto3>=1.43.123",
     "opentelemetry-sdk>=1.45.2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2",
     "opentelemetry-instrumentation-psycopg>=0.66b2",
@@ -45,7 +45,7 @@ dev = [
     "mypy>=2.4.1",
     "types-PyYAML>=6.0.12.20261030",
     "pre-commit>=4.7.0",
-    "boto3-stubs[s3]>=1.43.122",
+    "boto3-stubs[s3]>=1.43.123",
 ]
 [project.scripts]
 lares-mcp-bridge = "lares_mcp_bridge.__main__:main"
