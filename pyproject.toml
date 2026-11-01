@@ -16,14 +16,14 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
-    "fastmcp>=4.1.4",
+    "fastmcp>=4.1.5",
     "uvicorn[standard]>=0.54.0",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
     "structlog>=26.1.0",
     "httpx>=0.28.1",
-    "cachetools>=7.2.7",
+    "cachetools>=7.2.8",
     "prometheus-client>=0.26.0",
     "nats-py[nkeys]>=2.16.0",
     "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.46.0",
@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1",
+    "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=7.1.0",
     "testcontainers[postgres]>=4.15.0",
     "respx>=0.23.1",
