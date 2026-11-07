@@ -23,7 +23,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "structlog>=26.1.0",
     "httpx>=0.28.1",
-    "cachetools>=7.2.8",
+    "cachetools>=8.0.0",
     "prometheus-client>=0.26.0",
     "nats-py[nkeys]>=2.16.0",
     "lares-diagnostics-engine @ git+https://github.com/alexander-zimmermann/lares-diagnostics-engine@v1.47.0",
