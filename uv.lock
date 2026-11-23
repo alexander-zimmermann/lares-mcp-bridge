@@ -858,7 +858,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.43.124" },
     { name = "boto3-stubs", extras = ["s3"], marker = "extra == 'dev'", specifier = ">=1.43.124" },
-    { name = "cachetools", specifier = ">=7.2.8" },
+    { name = "cachetools", specifier = ">=7.3.3" },
     { name = "fastmcp", specifier = ">=4.1.6" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.47.0" },
