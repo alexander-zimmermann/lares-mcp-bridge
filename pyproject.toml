@@ -16,7 +16,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
-    "fastmcp>=4.2.5",
+    "fastmcp>=4.2.6",
     "uvicorn[standard]>=0.54.0",
     "psycopg[binary,pool]>=3.3.9",
     "pydantic>=2.14.4",
