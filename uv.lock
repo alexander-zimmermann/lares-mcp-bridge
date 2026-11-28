@@ -786,8 +786,8 @@ wheels = [
 
 [[package]]
 name = "lares-diagnostics-engine"
-version = "1.47.0"
-source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.47.0#a677856efc1df925f50816bb742ab13ad8fe4aeb" }
+version = "1.48.0"
+source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.48.0#fc3f7be64c0683bc5ef8a7a1df7895f3eacc2f6a" }
 dependencies = [
     { name = "httpx" },
     { name = "jsonschema" },
@@ -846,7 +846,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=8.0.3" },
     { name = "fastmcp", specifier = ">=4.2.6" },
     { name = "httpx", specifier = ">=0.29.0" },
-    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.47.0" },
+    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.48.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.4.1" },
     { name = "nats-py", extras = ["nkeys"], specifier = ">=2.17.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45.2" },
@@ -1020,8 +1020,8 @@ wheels = [
 
 [[package]]
 name = "nats-bridge-core"
-version = "0.10.0"
-source = { git = "https://github.com/alexander-zimmermann/nats-bridge-core?rev=v0.10.0#3544b27eb7429d17a8c65a0dfd52bfa6d66839ff" }
+version = "0.11.0"
+source = { git = "https://github.com/alexander-zimmermann/nats-bridge-core?rev=v0.11.0#f3abaac21eaf5ebd5950ac3f8528ebae9bd1a395" }
 dependencies = [
     { name = "jsonschema" },
     { name = "nats-py", extra = ["nkeys"] },
