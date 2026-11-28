@@ -11,7 +11,7 @@ from structlog.testing import capture_logs
 from lares_mcp_bridge import nats as nats_module
 from lares_mcp_bridge.config import Settings
 
-from .support import GATEWAY_KEY
+from .support import GATEWAY_KEY, SITE_FILE
 
 
 class FakeClient:
@@ -35,6 +35,7 @@ async def _connected(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(nats_module, "_nc", None)
     monkeypatch.setattr(nats_module, "_js", None)
     settings = Settings(
+        site_file=SITE_FILE,
         db_host="unused",
         db_name="unused",
         db_username="unused",

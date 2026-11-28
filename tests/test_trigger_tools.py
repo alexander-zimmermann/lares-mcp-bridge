@@ -17,11 +17,12 @@ import respx
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import trigger
 
-from .support import GATEWAY_KEY, TRIGGER_KEY, TRIGGER_URL
+from .support import GATEWAY_KEY, SITE_FILE, TRIGGER_KEY, TRIGGER_URL
 
 
 def _settings(trigger_url: str | None = None, trigger_key_file: str | None = None) -> Settings:
     return Settings(
+        site_file=SITE_FILE,
         db_host="localhost",
         db_name="x",
         db_username="x",

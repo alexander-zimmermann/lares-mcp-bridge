@@ -620,8 +620,7 @@ async def backtest_fault(
     A candidate the engine cannot measure is refused with the reason, worded
     the way a real edit of the fault list would fail: a schema error, an
     ``external`` fault, a target form its kind does not deliver on, a window
-    past what it can read, a fault measured against the plant's expected
-    yield.
+    past what it can read, a room the site does not declare.
     """
     return await backtest_tools.backtest_fault(candidate, weeks, limit)
 
@@ -1000,6 +999,7 @@ def build_app() -> Starlette:
         metrics_module.init()
         await db.init_pool(_settings)
         await db.init_write_pool(_settings)
+        backtest_tools.init(_settings)
         if _settings.nats_enabled:
             await nats_module.init(_settings)
         if _settings.wikijs_enabled:

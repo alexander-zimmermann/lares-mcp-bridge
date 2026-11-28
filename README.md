@@ -61,7 +61,7 @@ behind high-level questions:
 
 | Tool                                        | What it does                                                                                                   |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `backtest_fault(candidate, weeks, limit)`   | Runs one fault-list entry through the engine's own schema, measurement and episode fold over the last `weeks` and returns the episodes it would have produced (subject, dates, severity, peak score), oldest first, with the measurement's record. On a connection of its own on the read role, READ ONLY; whatever the engine cannot measure comes back as its reason. |
+| `backtest_fault(candidate, weeks, limit)`   | Runs one fault-list entry through the engine's own schema, measurement and episode fold over the last `weeks` and returns the episodes it would have produced (subject, dates, severity, peak score), oldest first, with the measurement's record. On a connection of its own on the read role, READ ONLY; rooms and the plant are measured by the engine's site file (`MCP_SITE_FILE`); whatever the engine cannot measure comes back as its reason. |
 
 **Runs and memory** (the agent platform's own state, written through [lares-agent-trigger](https://github.com/alexander-zimmermann/lares-agent-trigger), its only writer; the trigger tools require `MCP_TRIGGER_URL` + `MCP_TRIGGER_KEY_FILE`)
 
@@ -164,6 +164,8 @@ export MCP_DB_PORT=5432
 export MCP_DB_NAME=mydb
 export MCP_DB_USERNAME=mcp_readonly
 export MCP_DB_PASSWORD=secret
+# The diagnostics engine's site file, which a back-test measures rooms and the plant by:
+export MCP_SITE_FILE=./site.yaml
 # The live tools default to an in-cluster NATS URL — disable them standalone:
 export MCP_NATS_ENABLED=false
 # The key the gateway calls with, at least 32 characters:
@@ -188,6 +190,7 @@ All settings are environment variables, prefixed with `MCP_`:
 | `MCP_LOG_LEVEL`                      | `INFO`                      | structlog level                                                |
 | `MCP_LOG_FORMAT`                     | `json`                      | `json` or `console`                                            |
 | `MCP_DB_HOST`                        | _required_                  | Postgres host                                                  |
+| `MCP_SITE_FILE`                      | _required_                  | The diagnostics engine's site file, read at start              |
 | `MCP_DB_PORT`                        | `5432`                      | Postgres port                                                  |
 | `MCP_DB_NAME`                        | _required_                  | Database name                                                  |
 | `MCP_DB_USERNAME`                    | _required_                  | Read-only role                                                 |
@@ -251,6 +254,8 @@ docker run --rm -p 8080:8080 \
   -e MCP_DB_NAME=mydb \
   -e MCP_DB_USERNAME=mcp_readonly \
   -e MCP_DB_PASSWORD=secret \
+  -e MCP_SITE_FILE=/etc/lares-mcp-bridge/site.yaml \
+  -v ./site.yaml:/etc/lares-mcp-bridge/site.yaml:ro \
   -e MCP_NATS_ENABLED=false \
   -e MCP_GATEWAY_KEY=<at least 32 characters> \
   ghcr.io/alexander-zimmermann/lares-mcp-bridge:latest

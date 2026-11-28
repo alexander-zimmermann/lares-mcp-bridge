@@ -1,0 +1,14 @@
+location:
+  latitude: 50.0
+  longitude: 6.0
+timezone: Europe/Berlin
+pv:
+  planes:
+    West:
+      inverter_id: 1
+      tilt: 17
+      azimuth: 129
+      kwp: 6.4
+rooms:
+  GF.Kitchen:
+    temperature: "Sensor.GF.Kitchen.Temperature"
