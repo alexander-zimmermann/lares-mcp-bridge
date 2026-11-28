@@ -20,7 +20,7 @@ import respx
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import pbs
 
-from .support import GATEWAY_KEY
+from .support import GATEWAY_KEY, SITE_FILE
 
 PBS_URL = "https://backup.test:8007"
 TOKEN_ID = "lares-mcp-bridge@pbs!lares-mcp-bridge"
@@ -110,6 +110,7 @@ def _settings(
     pbs_url: str | None = None, pbs_token_id: str | None = None, pbs_token_file: str | None = None
 ) -> Settings:
     return Settings(
+        site_file=SITE_FILE,
         db_host="localhost",
         db_name="x",
         db_username="x",

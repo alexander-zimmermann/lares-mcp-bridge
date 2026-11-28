@@ -26,7 +26,7 @@ from testcontainers.core.waiting_utils import wait_for_logs
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import s3
 
-from .support import GATEWAY_KEY
+from .support import GATEWAY_KEY, SITE_FILE
 
 RUSTFS_IMAGE = "rustfs/rustfs:1.0.0"
 ACCESS_KEY = "lares-test-access"
@@ -95,6 +95,7 @@ def _settings(
     secret_key_file: str | None = None,
 ) -> Settings:
     return Settings(
+        site_file=SITE_FILE,
         db_host="localhost",
         db_name="x",
         db_username="x",

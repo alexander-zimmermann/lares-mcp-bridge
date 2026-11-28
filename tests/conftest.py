@@ -22,7 +22,7 @@ from lares_mcp_bridge import db, tracing
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import sources, trigger
 
-from .support import GATEWAY_KEY, TRIGGER_KEY, TRIGGER_URL, connect
+from .support import GATEWAY_KEY, SITE_FILE, TRIGGER_KEY, TRIGGER_URL, connect
 
 # One recording provider for the whole session: the global can only be set once.
 _exporter = InMemorySpanExporter()
@@ -843,6 +843,12 @@ GROUP BY bucket, meter_id WITH NO DATA
 ]
 
 
+@pytest.fixture(scope="session", autouse=True)
+def site_file() -> None:
+    """The site file every Settings needs, the way lares mounts the engine's."""
+    os.environ["MCP_SITE_FILE"] = SITE_FILE
+
+
 @pytest.fixture
 def settings(timescaledb_container: PostgresContainer) -> Settings:
     os.environ.update(
@@ -899,6 +905,7 @@ def trigger_key_file(tmp_path: Path) -> Path:
 @pytest_asyncio.fixture
 async def trigger_client(trigger_key_file: Path) -> AsyncIterator[None]:
     settings = Settings(
+        site_file=SITE_FILE,
         db_host="localhost",
         db_name="x",
         db_username="x",

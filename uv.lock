@@ -786,8 +786,8 @@ wheels = [
 
 [[package]]
 name = "lares-diagnostics-engine"
-version = "1.48.0"
-source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.48.0#fc3f7be64c0683bc5ef8a7a1df7895f3eacc2f6a" }
+version = "1.49.0"
+source = { git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.49.0#2e382934de2e0dc826186cc83f02be3559f120aa" }
 dependencies = [
     { name = "httpx" },
     { name = "jsonschema" },
@@ -846,7 +846,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=8.0.3" },
     { name = "fastmcp", specifier = ">=4.2.6" },
     { name = "httpx", specifier = ">=0.29.0" },
-    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.48.0" },
+    { name = "lares-diagnostics-engine", git = "https://github.com/alexander-zimmermann/lares-diagnostics-engine?rev=v1.49.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.4.1" },
     { name = "nats-py", extras = ["nkeys"], specifier = ">=2.17.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45.2" },

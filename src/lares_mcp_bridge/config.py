@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     db_write_username_file: str | None = None
     db_write_password_file: str | None = None
 
+    # The site file the diagnostics engine runs on, read at start: a back-test
+    # measures a room or the plant by what it declares.
+    site_file: str
+
     # Query limits: cap on rows returned by the time-series tools.
     query_row_limit: int = 5000
     # The zone the bucketing tools cut days in and show their buckets in: the

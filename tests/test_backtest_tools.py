@@ -20,6 +20,8 @@ from fastmcp import Client
 from testcontainers.postgres import PostgresContainer
 
 from lares_mcp_bridge import server
+from lares_mcp_bridge.config import Settings
+from lares_mcp_bridge.tools import backtest as backtest_tools
 
 from .support import connect
 
@@ -46,15 +48,17 @@ _EXTERNAL = {
     "scope": {"include": "%.Gastherme.System-Druck-Anomalie"},
 }
 
-# Measured against the plant's expected yield: the one shape that needs the site file.
-_YIELD = {
-    "name": "candidate_pv",
-    "sentence": "Die Anlage hat an einem Tag weniger erzeugt als die Prognose erwartet.",
-    "unit": "× des erlaubten Fehlbetrags",
+# A room is measured on the channel the site names for it; this one the site lacks.
+_ROOM = {
+    "name": "candidate_room",
+    "sentence": "Ein Raum bleibt unter seinem Sollwert, obwohl das Ventil offen ist.",
+    "unit": "K",
     "kind": "deviation",
-    "expectation": "forecast_solar",
-    "parameters": {"min_shortfall_pct": 35, "min_expected_kwh": 3},
-    "target": {"ga": "15/4/11"},
+    "parameters": {"min_hours": 2, "gate_min_pct": 50},
+    "roles": {"reference": "%.Setpoint", "gate": "%.Valve"},
+    "scope": {"include": ["Climate.%.Setpoint", "Climate.%.Valve"]},
+    "rooms": {"GF.Attic": {"min_gap_k": 1.0}},
+    "target": {"per_room": True, "name": "Climate.{entity}.Anomaly"},
 }
 
 
@@ -88,6 +92,11 @@ def quiet_channels(timescaledb_container: PostgresContainer) -> Iterator[datetim
         conn.execute("DELETE FROM ga_catalog WHERE ga = '1/3/20'")
         conn.execute("CALL refresh_continuous_aggregate('knx_1h', NULL, NULL)")
         conn.close()
+
+
+@pytest.fixture(autouse=True)
+def site(settings: Settings) -> None:
+    backtest_tools.init(settings)
 
 
 async def _backtest(**arguments: Any) -> dict[str, Any]:
@@ -149,9 +158,9 @@ async def test_the_list_is_cut_to_the_limit_and_says_so(
         (_SILENCE, 0, "at least one week"),
         ({**_SILENCE, "target": {"ga": "0/0/230"}}, 1, "per_main_group"),
         (_EXTERNAL, 1, "Basalte"),
-        (_YIELD, 1, "needs the site"),
+        (_ROOM, 1, "'GF.Attic' is not a room of the site"),
     ],
-    ids=["schema", "past-history", "under-a-week", "target-form", "external", "plant-yield"],
+    ids=["schema", "past-history", "under-a-week", "target-form", "external", "unknown-room"],
 )
 async def test_what_cannot_be_measured_is_refused_in_the_engines_words(
     db_pool: None, candidate: dict[str, Any], weeks: int, reason: str

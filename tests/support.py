@@ -3,6 +3,8 @@ and the gateway's key."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import psycopg
 from testcontainers.postgres import PostgresContainer
 
@@ -13,6 +15,9 @@ TRIGGER_KEY = "t" * 32
 
 # The key the gateway calls the bridge with.
 GATEWAY_KEY = "g" * 40
+
+# The site file the back-test reads: one plane and one room.
+SITE_FILE = str(Path(__file__).parent / "data" / "site.yaml")
 
 
 def connect(container: PostgresContainer) -> psycopg.Connection:

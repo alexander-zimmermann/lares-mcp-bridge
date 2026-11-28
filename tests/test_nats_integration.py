@@ -21,7 +21,7 @@ from testcontainers.core.waiting_utils import wait_for_logs
 from lares_mcp_bridge import nats as nats_module
 from lares_mcp_bridge.config import Settings
 
-from .support import GATEWAY_KEY
+from .support import GATEWAY_KEY, SITE_FILE
 
 
 @pytest.fixture(scope="module")
@@ -48,6 +48,7 @@ async def seeded_nats(nats_url: str) -> AsyncIterator[str]:
     await seed.close()
 
     settings = Settings(
+        site_file=SITE_FILE,
         db_host="unused",
         db_name="unused",
         db_username="unused",

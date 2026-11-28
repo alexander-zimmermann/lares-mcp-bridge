@@ -22,7 +22,7 @@ import respx
 from lares_mcp_bridge.config import Settings
 from lares_mcp_bridge.tools import wiki
 
-from .support import GATEWAY_KEY
+from .support import GATEWAY_KEY, SITE_FILE
 
 WIKI_URL = "http://wiki-js.wiki-js.svc"
 TOKEN = "eyJhbGciOiJSUzI1NiJ9.test.token"
@@ -58,6 +58,7 @@ def _settings(
     wikijs_write_token_file: str | None = None,
 ) -> Settings:
     return Settings(
+        site_file=SITE_FILE,
         db_host="localhost",
         db_name="x",
         db_username="x",
